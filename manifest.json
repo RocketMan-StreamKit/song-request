@@ -1,0 +1,32 @@
+{
+  "id": "song-request",
+  "name": {
+    "en": "Song Request",
+    "ru": "Заказ музыки",
+    "uk": "Замовлення музики"
+  },
+  "description": {
+    "en": "YouTube song request system. Viewers donate to request songs that play in queue.",
+    "ru": "Система заказа музыки с YouTube. Зрители донатят и заказывают треки в очередь.",
+    "uk": "Система замовлення музики з YouTube. Глядачі донатять та замовляють треки в чергу."
+  },
+  "type": "application",
+  "version": "1.0.0",
+  "author": "RocketMan System",
+  "icon": "logo.png",
+  "permissions": [
+    "WEB_CONTENT",
+    "WEB_END_POINTS",
+    "NETWORK_REQUEST",
+    "DASHBOARD_EVENTS_INCOMING",
+    "CONFIG_READ",
+    "STATUS"
+  ],
+  "app_version": "1.0.30",
+  "web": "index.html",
+  "web_type": "application",
+  "web_contents": [
+    "style.css",
+    "app.js"
+  ]
+}
