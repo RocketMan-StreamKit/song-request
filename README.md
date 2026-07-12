@@ -4,9 +4,7 @@ Integration addon for StreamKit+.
 
 - **Addon id:** `song-request`
 - **Type:** `application`
-- **Minimum StreamKit+:** `1.0.30`
 
-> **Warning:** This addon uses a `REPO`-only id (no `ORG/` prefix). That format is reserved for official RocketMan-StreamKit catalog addons. It **cannot be published** to the catalog, and StreamKit+ may treat a local install as unsafe.
 
 ## Development
 
