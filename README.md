@@ -24,6 +24,4 @@ Install the `dist/` folder in StreamKit+ (contains `manifest.json`, worker, and 
 
 ## Release
 
-This project uses a `REPO`-only addon id, so it is intended for **local development only** and cannot be published to the RocketMan catalog. You can still use the release workflow to build GitHub Release assets for personal distribution.
-
 Docs: [StreamKit+ addon developer docs](https://rocketman-streamkit.github.io/types/)
