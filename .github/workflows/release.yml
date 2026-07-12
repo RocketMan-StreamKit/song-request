@@ -83,7 +83,7 @@ jobs:
             --title "${{ steps.manifest.outputs.tag }}" \
             main.zip \
             dist/manifest.json \
-            "dist/logo.png"
+            "dist/logo.svg"
 
   sync:
     name: Sync addon to RocketMan catalog

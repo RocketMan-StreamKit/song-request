@@ -13,7 +13,7 @@
   "type": "application",
   "version": "1.0.0",
   "author": "RocketMan System",
-  "icon": "logo.png",
+  "icon": "logo.svg",
   "permissions": [
     "WEB_CONTENT",
     "WEB_END_POINTS",
