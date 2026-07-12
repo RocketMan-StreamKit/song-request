@@ -232,15 +232,7 @@ async function init() {
     try {
       await dashboard.updateRecordAttaches(
         payload.recordId,
-        [
-          {
-            type: 'song',
-            value: currentState.queue[entryIdx].title,
-            id: payload.id,
-            playable: true,
-            playing: true,
-          },
-        ],
+        [{ type: 'song', value: currentState.queue[entryIdx].title, id: payload.id, playable: true }],
         { mode: 'merge' }
       );
     } catch {}
