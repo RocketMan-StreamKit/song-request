@@ -215,6 +215,37 @@ async function init() {
   network.endpoints.create('validate-url', 'POST', 'onValidateUrl');
   network.endpoints.create('manual-add', 'POST', 'onManualAdd');
 
+  try {
+    await dashboard.registerAttaches([
+      { type: 'song', label: { en: 'Song', ru: 'Трек', uk: 'Трек' } },
+    ]);
+  } catch {}
+
+  dashboard.onAttachPlay(async payload => {
+    if (payload.type !== 'song') return;
+    if (payload.action !== 'play') return;
+    const entryIdx = currentState.queue.findIndex(e => e.id === payload.id);
+    if (entryIdx === -1) return;
+    currentState.queue[entryIdx].played = false;
+    currentState.currentIndex = entryIdx;
+    saveState();
+    try {
+      await dashboard.updateRecordAttaches(
+        payload.recordId,
+        [
+          {
+            type: 'song',
+            value: currentState.queue[entryIdx].title,
+            id: payload.id,
+            playable: true,
+            playing: true,
+          },
+        ],
+        { mode: 'merge' }
+      );
+    } catch {}
+  });
+
   events.On('onGetState', async () => {
     await loadSettings();
     return {
@@ -375,6 +406,14 @@ async function init() {
         firstUnplayed !== -1 ? firstUnplayed : currentState.queue.length - 1;
     }
     saveState();
+
+    try {
+      await dashboard.updateRecordAttaches(
+        payload.id,
+        [{ type: 'song', value: entry.title, id: entry.id, playable: true }],
+        { mode: 'merge' }
+      );
+    } catch {}
   });
 }
 

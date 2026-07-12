@@ -18,11 +18,12 @@
     "WEB_CONTENT",
     "WEB_END_POINTS",
     "NETWORK_REQUEST",
+    "DASHBOARD_EVENTS",
     "DASHBOARD_EVENTS_INCOMING",
     "CONFIG_READ",
     "STATUS"
   ],
-  "app_version": "1.0.31",
+  "app_version": "1.0.33",
   "web": "index.html",
   "web_type": "application",
   "web_contents": [
