@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.5",
-    "@rocketman-streamkit/types": "^1.0.30",
+    "@rocketman-streamkit/types": "^1.0.33",
     "typescript": "^5.8.3"
   }
 }
