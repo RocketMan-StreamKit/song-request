@@ -168,6 +168,7 @@ let youtubeApiReady = false;
 let seeking = false;
 let selectedQuality: string = 'default';
 let pendingAdd: { url: string; info: any } | null = null;
+let lastRenderKey = '';
 
 const API_BASE = `http://localhost:${window.location.port}/addon/song-request`;
 
@@ -314,6 +315,10 @@ function renderQueue() {
   const list = document.getElementById('queue-list');
   const empty = document.getElementById('queue-empty');
   if (!list) return;
+
+  const renderKey = JSON.stringify({ q: state.queue, ci: state.currentIndex });
+  if (renderKey === lastRenderKey) return;
+  lastRenderKey = renderKey;
 
   if (state.queue.length === 0) {
     list.innerHTML = '';
@@ -572,23 +577,27 @@ function updatePlayerState() {
   }
 }
 
+let lastVisKey = '';
+
 function updatePlayerVisibility() {
   const section = document.getElementById('player-video-section');
   const btnHide = document.getElementById('btn-hide-player');
   const nothingPlaying = state.currentIndex === -1 || !state.queue.length;
+  const shouldHide = state.playerHidden || nothingPlaying;
+  const btnDisabled = nothingPlaying;
+
+  const visKey = `${shouldHide}:${btnDisabled}`;
+  if (visKey === lastVisKey) return;
+  lastVisKey = visKey;
+
   if (section) {
-    if (state.playerHidden || nothingPlaying) {
-      section.classList.add('hidden');
-    } else {
-      section.classList.remove('hidden');
-    }
+    section.classList.toggle('hidden', shouldHide);
   }
   if (btnHide) {
-    const disabled = nothingPlaying;
-    btnHide.disabled = disabled;
-    btnHide.style.opacity = disabled ? '0.3' : '1';
-    btnHide.style.pointerEvents = disabled ? 'none' : 'auto';
-    btnHide.title = disabled ? '' : (state.playerHidden ? t('showPlayer') : t('hidePlayer'));
+    btnHide.disabled = btnDisabled;
+    btnHide.style.opacity = btnDisabled ? '0.3' : '1';
+    btnHide.style.pointerEvents = btnDisabled ? 'none' : 'auto';
+    btnHide.title = btnDisabled ? '' : (state.playerHidden ? t('showPlayer') : t('hidePlayer'));
   }
 }
 
