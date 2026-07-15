@@ -91,6 +91,24 @@ body {
   border: none;
 }
 
+/* Quality lock: iframe content viewport stays at target resolution
+   (YouTube ABR keys off that); CSS scale fits the container without crop. */
+#player-container.quality-locked iframe,
+#player-container.quality-locked > div,
+#player-container.quality-locked #player {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: var(--quality-w) !important;
+  height: var(--quality-h) !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: translate(var(--quality-tx), var(--quality-ty))
+    scale(var(--quality-scale)) !important;
+  transform-origin: 0 0 !important;
+  border: none;
+}
+
 #progress-area {
   display: flex;
   align-items: center;

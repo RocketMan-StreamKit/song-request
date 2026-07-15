@@ -1,5 +1,8 @@
 type Locale = 'en' | 'ru' | 'uk';
 
+declare const YT: any;
+declare function onYouTubeIframeAPIReady(): void;
+
 const LOCALE: Record<string, Locale> = { en: 'en', ru: 'ru', uk: 'uk' };
 
 const T = {
@@ -7,7 +10,8 @@ const T = {
     queue: 'Order History',
     songs: (n: number) => `${n} song${n !== 1 ? 's' : ''}`,
     noSong: 'No song playing',
-    queueEmpty: 'No song history yet. Songs requested via donations will appear here.',
+    queueEmpty:
+      'No song history yet. Songs requested via donations will appear here.',
     playerHidden: 'Player hidden — click to show',
     hidePlayer: 'Hide player',
     showPlayer: 'Show player',
@@ -25,7 +29,8 @@ const T = {
     hAgo: (n: number) => `${n}h ago`,
     dAgo: (n: number) => `${n}d ago`,
     startAt: 'Start at',
-    nowPlaying: (title: string, name: string) => `${title} — requested by ${name}`,
+    nowPlaying: (title: string, name: string) =>
+      `${title} — requested by ${name}`,
     auto: 'Auto',
     addTitle: 'Add song',
     addPlaceholder: 'Paste YouTube URL...',
@@ -63,7 +68,8 @@ const T = {
     hAgo: (n: number) => `${n} ч. назад`,
     dAgo: (n: number) => `${n} д. назад`,
     startAt: 'С',
-    nowPlaying: (title: string, name: string) => `${title} — заказал(а) ${name}`,
+    nowPlaying: (title: string, name: string) =>
+      `${title} — заказал(а) ${name}`,
     auto: 'Авто',
     addTitle: 'Добавить трек',
     addPlaceholder: 'Вставьте ссылку YouTube...',
@@ -83,7 +89,8 @@ const T = {
     queue: 'Історія замовлень',
     songs: (n: number) => `${n} ${pluralize(n, ['пісня', 'пісні', 'пісень'])}`,
     noSong: 'Немає треків',
-    queueEmpty: 'Історія замовлень порожня. Замовлені через донати треки з\'являться тут.',
+    queueEmpty:
+      "Історія замовлень порожня. Замовлені через донати треки з'являться тут.",
     playerHidden: 'Плеєр приховано — натисніть щоб показати',
     hidePlayer: 'Приховати плеєр',
     showPlayer: 'Показати плеєр',
@@ -101,7 +108,8 @@ const T = {
     hAgo: (n: number) => `${n} год. тому`,
     dAgo: (n: number) => `${n} д. тому`,
     startAt: 'З',
-    nowPlaying: (title: string, name: string) => `${title} — замовив(ла) ${name}`,
+    nowPlaying: (title: string, name: string) =>
+      `${title} — замовив(ла) ${name}`,
     auto: 'Авто',
     addTitle: 'Додати трек',
     addPlaceholder: 'Вставте посилання YouTube...',
@@ -157,7 +165,13 @@ interface AppState {
   playerHeight: number;
 }
 
-let state: AppState = { queue: [], currentIndex: -1, playerHidden: false, volume: 50, playerHeight: 360 };
+let state: AppState = {
+  queue: [],
+  currentIndex: -1,
+  playerHidden: false,
+  volume: 50,
+  playerHeight: 360,
+};
 let player: any = null;
 let isPlaying = false;
 let playerReady = false;
@@ -177,16 +191,21 @@ function getToken(): string {
 }
 
 async function apiGet(path: string): Promise<any> {
-  const res = await fetch(`${API_BASE}${path}?token=${encodeURIComponent(getToken())}`);
+  const res = await fetch(
+    `${API_BASE}${path}?token=${encodeURIComponent(getToken())}`
+  );
   return res.json();
 }
 
 async function apiPost(path: string, body: any): Promise<any> {
-  const res = await fetch(`${API_BASE}${path}?token=${encodeURIComponent(getToken())}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    `${API_BASE}${path}?token=${encodeURIComponent(getToken())}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
   return res.json();
 }
 
@@ -194,7 +213,8 @@ function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  if (h > 0)
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
@@ -228,7 +248,11 @@ function formatTimeAgo(ts: number): string {
 }
 
 function formatNumber(n: number): string {
-  const locMap: Record<string, string> = { en: 'en-US', ru: 'ru-RU', uk: 'uk-UA' };
+  const locMap: Record<string, string> = {
+    en: 'en-US',
+    ru: 'ru-RU',
+    uk: 'uk-UA',
+  };
   return n.toLocaleString(locMap[lang] || 'en-US');
 }
 
@@ -239,6 +263,7 @@ function applyPlayerHeight() {
     pc.style.maxHeight = `${state.playerHeight}px`;
     pc.style.aspectRatio = 'unset';
   }
+  applyPlaybackQuality();
 }
 
 async function loadState() {
@@ -334,9 +359,13 @@ function renderQueue() {
     .map((item, ri) => {
       const originalIndex = state.queue.length - 1 - ri;
       const isPlaying = originalIndex === state.currentIndex;
-      const thumb = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/default.jpg`;
+      const thumb =
+        item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/default.jpg`;
       const duration = formatDurationShort(item.duration);
-      const timestampStr = item.timestamp > 0 ? `${t('startAt')} ${formatDurationShort(item.timestamp)}` : '';
+      const timestampStr =
+        item.timestamp > 0
+          ? `${t('startAt')} ${formatDurationShort(item.timestamp)}`
+          : '';
       const isPlayed = item.played;
       return `
         <li class="queue-item ${isPlaying ? 'playing' : ''} ${isPlayed ? 'played' : ''}" data-index="${originalIndex}" draggable="true">
@@ -362,7 +391,7 @@ function renderQueue() {
     .join('');
 
   const items = list.querySelectorAll<HTMLElement>('.queue-item');
-  items.forEach((item) => {
+  items.forEach(item => {
     item.addEventListener('dragstart', onDragStart);
     item.addEventListener('dragend', onDragEnd);
     item.addEventListener('dragover', onDragOver);
@@ -370,23 +399,29 @@ function renderQueue() {
     item.addEventListener('drop', onDrop);
   });
 
-  list.querySelectorAll('.btn-remove').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const index = parseInt((e.currentTarget as HTMLElement).dataset.index || '0');
+  list.querySelectorAll('.btn-remove').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const index = parseInt(
+        (e.currentTarget as HTMLElement).dataset.index || '0'
+      );
       removeSong(index);
     });
   });
 
-  list.querySelectorAll('.btn-play').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const index = parseInt((e.currentTarget as HTMLElement).dataset.index || '0');
+  list.querySelectorAll('.btn-play').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const index = parseInt(
+        (e.currentTarget as HTMLElement).dataset.index || '0'
+      );
       playSong(index);
     });
   });
 
-  list.querySelectorAll('.btn-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const index = parseInt((e.currentTarget as HTMLElement).dataset.index || '0');
+  list.querySelectorAll('.btn-toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const index = parseInt(
+        (e.currentTarget as HTMLElement).dataset.index || '0'
+      );
       const item = state.queue[index];
       if (item?.played) {
         requeueSong(index);
@@ -414,7 +449,9 @@ function onDragStart(e: DragEvent) {
 function onDragEnd(e: DragEvent) {
   const item = e.currentTarget as HTMLElement;
   item.classList.remove('dragging');
-  document.querySelectorAll('.queue-item.drag-over').forEach((el) => el.classList.remove('drag-over'));
+  document
+    .querySelectorAll('.queue-item.drag-over')
+    .forEach(el => el.classList.remove('drag-over'));
   dragItem = null;
 }
 
@@ -497,7 +534,10 @@ async function requeueSong(index: number) {
     state.currentIndex = index;
     await apiPost('/player', { currentIndex: index });
   }
-  await apiPost('/queue', { queue: state.queue, currentIndex: state.currentIndex });
+  await apiPost('/queue', {
+    queue: state.queue,
+    currentIndex: state.currentIndex,
+  });
   renderQueue();
   updateQueueCount();
   if (state.currentIndex === index) {
@@ -541,7 +581,7 @@ function updatePlayerState() {
   if (!playerReady || !player) return;
 
   if (state.currentIndex === -1) {
-    const firstUnplayed = state.queue.findIndex((item) => !item.played);
+    const firstUnplayed = state.queue.findIndex(item => !item.played);
     if (firstUnplayed !== -1) {
       state.currentIndex = firstUnplayed;
       apiPost('/player', { currentIndex: firstUnplayed });
@@ -594,10 +634,14 @@ function updatePlayerVisibility() {
     section.classList.toggle('hidden', shouldHide);
   }
   if (btnHide) {
-    btnHide.disabled = btnDisabled;
+    (btnHide as HTMLButtonElement).disabled = btnDisabled;
     btnHide.style.opacity = btnDisabled ? '0.3' : '1';
     btnHide.style.pointerEvents = btnDisabled ? 'none' : 'auto';
-    btnHide.title = btnDisabled ? '' : (state.playerHidden ? t('showPlayer') : t('hidePlayer'));
+    btnHide.title = btnDisabled
+      ? ''
+      : state.playerHidden
+        ? t('showPlayer')
+        : t('hidePlayer');
   }
 }
 
@@ -631,11 +675,233 @@ async function setVolume(vol: number) {
   }
 }
 
+/**
+ * Pixel sizes that nudge YouTube's ABR toward a given quality ladder.
+ * API setPlaybackQuality is a no-op; ABR follows the iframe content viewport.
+ * @type {Record<string, { w: number, h: number }>}
+ */
+const QUALITY_VIEWPORT: Record<string, { w: number; h: number }> = {
+  small: { w: 256, h: 144 },
+  medium: { w: 640, h: 360 },
+  large: { w: 854, h: 480 },
+  hd720: { w: 1280, h: 720 },
+  hd1080: { w: 1920, h: 1080 },
+};
+
+/**
+ * Resolves the YouTube iframe element created by the IFrame API.
+ * @returns {HTMLIFrameElement | null}
+ * @example getPlayerIframe();
+ */
+function getPlayerIframe(): HTMLIFrameElement | null {
+  const container = document.getElementById('player-container');
+  if (!container) return null;
+  const iframe = container.querySelector('iframe');
+  return iframe instanceof HTMLIFrameElement ? iframe : null;
+}
+
+/**
+ * Sizes the iframe content viewport to the target quality and CSS-scales it
+ * to fit the visible container (contain, no crop). Transform does not change
+ * the iframe viewport, so YouTube still encodes at the locked resolution.
+ * Recalculates on every call so live container resizes stay correct.
+ * @param {string} [quality=selectedQuality] - Quality id from the select
+ * @example applyPlaybackQuality('small');
+ */
+function applyPlaybackQuality(quality: string = selectedQuality) {
+  const container = document.getElementById('player-container');
+  if (!container) return;
+
+  if (quality === 'default' || !QUALITY_VIEWPORT[quality]) {
+    container.classList.remove('quality-locked');
+    container.style.removeProperty('--quality-w');
+    container.style.removeProperty('--quality-h');
+    container.style.removeProperty('--quality-scale');
+    container.style.removeProperty('--quality-tx');
+    container.style.removeProperty('--quality-ty');
+
+    const cw = Math.max(1, container.clientWidth);
+    const ch = Math.max(1, container.clientHeight);
+    if (player && typeof player.setSize === 'function') {
+      player.setSize(cw, ch);
+    }
+    const iframe = getPlayerIframe();
+    if (iframe) {
+      iframe.removeAttribute('width');
+      iframe.removeAttribute('height');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.transform = '';
+      iframe.style.position = '';
+      iframe.style.top = '';
+      iframe.style.left = '';
+    }
+    return;
+  }
+
+  const target = QUALITY_VIEWPORT[quality];
+  const cw = Math.max(1, container.clientWidth);
+  const ch = Math.max(1, container.clientHeight);
+  // contain: fit entirely inside the container (no edge crop)
+  const scale = Math.min(cw / target.w, ch / target.h);
+  const offsetX = (cw - target.w * scale) / 2;
+  const offsetY = (ch - target.h * scale) / 2;
+
+  container.classList.add('quality-locked');
+  container.style.setProperty('--quality-w', `${target.w}px`);
+  container.style.setProperty('--quality-h', `${target.h}px`);
+  container.style.setProperty('--quality-scale', String(scale));
+  container.style.setProperty('--quality-tx', `${offsetX}px`);
+  container.style.setProperty('--quality-ty', `${offsetY}px`);
+
+  if (player && typeof player.setSize === 'function') {
+    player.setSize(target.w, target.h);
+  }
+
+  const iframe = getPlayerIframe();
+  if (iframe) {
+    iframe.setAttribute('width', String(target.w));
+    iframe.setAttribute('height', String(target.h));
+    iframe.style.width = `${target.w}px`;
+    iframe.style.height = `${target.h}px`;
+    iframe.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    iframe.style.transformOrigin = '0 0';
+    iframe.style.position = 'absolute';
+    iframe.style.top = '0';
+    iframe.style.left = '0';
+    iframe.style.maxWidth = 'none';
+    iframe.style.maxHeight = 'none';
+  }
+}
+
+/**
+ * Observes player-container size changes (window resize, height drag, layout).
+ * @returns {void}
+ * @example watchPlayerContainerResize();
+ */
+function watchPlayerContainerResize() {
+  const container = document.getElementById('player-container');
+  if (!container) return;
+
+  let rafId = 0;
+  const schedule = () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      applyPlaybackQuality();
+    });
+  };
+
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container);
+  }
+
+  window.addEventListener('resize', schedule);
+}
+
+/**
+ * PlayerVars shared by all YouTube player instances.
+ * @type {Record<string, number>}
+ */
+const YT_PLAYER_VARS = {
+  controls: 0,
+  disablekb: 1,
+  fs: 0,
+  iv_load_policy: 3,
+  modestbranding: 1,
+  rel: 0,
+  showinfo: 0,
+  autoplay: 1,
+  playsinline: 1,
+};
+
+/**
+ * Ensures a fresh mount node exists for YT.Player (API replaces #player with an iframe).
+ * @returns {void}
+ * @example ensurePlayerMount();
+ */
+function ensurePlayerMount() {
+  const container = document.getElementById('player-container');
+  if (!container) return;
+  if (!document.getElementById('player')) {
+    container.innerHTML = '<div id="player"></div>';
+  }
+}
+
+/**
+ * Creates (or recreates) the YouTube player at a viewport sized for the quality lock.
+ * @param {string} [videoId] - Optional video to load immediately
+ * @param {number} [startSeconds=0] - Start offset in seconds
+ * @example createYouTubePlayer('dQw4w9WgXcQ', 12);
+ */
+function createYouTubePlayer(videoId?: string, startSeconds: number = 0) {
+  ensurePlayerMount();
+
+  const container = document.getElementById('player-container');
+  const locked = QUALITY_VIEWPORT[selectedQuality];
+  const width = locked ? locked.w : Math.max(1, container?.clientWidth || 640);
+  const height = locked
+    ? locked.h
+    : Math.max(1, container?.clientHeight || 360);
+
+  playerReady = false;
+
+  if (player && typeof player.destroy === 'function') {
+    try {
+      player.destroy();
+    } catch {
+      // Ignore destroy errors from a half-initialized player
+    }
+    player = null;
+  }
+
+  ensurePlayerMount();
+
+  const options: Record<string, unknown> = {
+    width,
+    height,
+    playerVars: { ...YT_PLAYER_VARS },
+    events: {
+      onStateChange: onPlayerStateChange,
+      onReady: onPlayerReady,
+      onError: onPlayerError,
+    },
+  };
+
+  if (videoId) {
+    options.videoId = videoId;
+    (options.playerVars as Record<string, number>).start =
+      Math.floor(startSeconds);
+  }
+
+  player = new YT.Player('player', options);
+  applyPlaybackQuality();
+}
+
+/**
+ * Stores the selected quality and recreates the player so ABR initializes
+ * against the locked iframe viewport (required for real downgrades to 144p).
+ * @param {string} quality - Quality id from the quality select
+ * @example setQuality('small');
+ */
 function setQuality(quality: string) {
   selectedQuality = quality;
-  if (player && playerReady && player.setPlaybackQuality) {
-    player.setPlaybackQuality(quality);
-  }
+  applyPlaybackQuality(quality);
+
+  if (!youtubeApiReady) return;
+
+  const item = state.queue[state.currentIndex];
+  const currentTime =
+    player && typeof player.getCurrentTime === 'function'
+      ? player.getCurrentTime()
+      : 0;
+  const startSeconds =
+    item && typeof currentTime === 'number' && currentTime > 0
+      ? currentTime
+      : item?.timestamp || 0;
+
+  createYouTubePlayer(item?.videoId, startSeconds);
 }
 
 function updatePlayButton() {
@@ -657,9 +923,12 @@ function updateSeekBar() {
     seekBar.max = String(Math.floor(duration));
     seekBar.value = String(Math.floor(currentTime));
   }
-  if (timeCurrent) timeCurrent.textContent = formatDurationShort(Math.floor(currentTime));
+  if (timeCurrent)
+    timeCurrent.textContent = formatDurationShort(Math.floor(currentTime));
   if (timeTotal && state.queue[state.currentIndex]) {
-    timeTotal.textContent = formatDurationShort(state.queue[state.currentIndex].duration);
+    timeTotal.textContent = formatDurationShort(
+      state.queue[state.currentIndex].duration
+    );
   }
 }
 
@@ -679,11 +948,14 @@ function onPlayerStateChange(event: any) {
   if (!event || event.data === undefined) return;
 
   switch (event.data) {
+    case YT.PlayerState.BUFFERING:
+      applyPlaybackQuality();
+      break;
     case YT.PlayerState.PLAYING:
       isPlaying = true;
       updatePlayButton();
       startSeekPolling();
-      player.setPlaybackQuality(selectedQuality);
+      applyPlaybackQuality();
       markCurrentPlayed();
       break;
     case YT.PlayerState.PAUSED:
@@ -700,7 +972,7 @@ function onPlayerStateChange(event: any) {
     case YT.PlayerState.CUED:
       if (player) {
         player.setVolume(state.volume);
-        player.setPlaybackQuality(selectedQuality);
+        applyPlaybackQuality();
         updateSeekBar();
       }
       break;
@@ -710,7 +982,10 @@ function onPlayerStateChange(event: any) {
 function seekBarReset() {
   const seekBar = document.getElementById('seek-bar') as HTMLInputElement;
   const timeCurrent = document.getElementById('time-current');
-  if (seekBar) { seekBar.value = '0'; seekBar.max = '100'; }
+  if (seekBar) {
+    seekBar.value = '0';
+    seekBar.max = '100';
+  }
   if (timeCurrent) timeCurrent.textContent = '0:00';
 }
 
@@ -718,8 +993,22 @@ function onPlayerReady() {
   playerReady = true;
   if (player) {
     player.setVolume(state.volume);
-    player.setPlaybackQuality(selectedQuality);
+    applyPlaybackQuality();
   }
+
+  const videoId = player?.getVideoData?.()?.video_id;
+  if (videoId) {
+    isPlaying = true;
+    updatePlayButton();
+    const item = state.queue[state.currentIndex];
+    if (item) {
+      setNowPlaying(t('nowPlaying', item.title, item.requestedBy));
+      autoShowPlayer();
+    }
+    startSeekPolling();
+    return;
+  }
+
   playCurrent();
 }
 
@@ -733,12 +1022,15 @@ async function markCurrentPlayed() {
   const item = state.queue[state.currentIndex];
   if (!item || item.played) return;
   item.played = true;
-  await apiPost('/queue', { queue: state.queue, currentIndex: state.currentIndex });
+  await apiPost('/queue', {
+    queue: state.queue,
+    currentIndex: state.currentIndex,
+  });
 }
 
 async function nextSong() {
   await markCurrentPlayed();
-  const nextIdx = state.queue.findIndex((item) => !item.played);
+  const nextIdx = state.queue.findIndex(item => !item.played);
   if (nextIdx !== -1) {
     state.currentIndex = nextIdx;
     await apiPost('/player', { currentIndex: state.currentIndex });
@@ -812,7 +1104,10 @@ function openAddModal() {
   if (addResult) addResult.classList.add('hidden');
   if (footer) footer.classList.add('hidden');
   if (modalTitle) modalTitle.textContent = t('addTitle');
-  if (addInput) { addInput.value = ''; addInput.focus(); }
+  if (addInput) {
+    addInput.value = '';
+    addInput.focus();
+  }
 }
 
 function closeModal() {
@@ -847,7 +1142,11 @@ async function handleAddSubmit() {
     const modalTitle = document.getElementById('modal-title');
 
     if (res.errors.length === 0) {
-      const addRes = await apiPost('/manual-add', { url, info: res.info, requestedBy: 'Manual' });
+      const addRes = await apiPost('/manual-add', {
+        url,
+        info: res.info,
+        requestedBy: 'Manual',
+      });
       if (addRes.success) {
         state = addRes.state;
         updateUI();
@@ -873,13 +1172,16 @@ async function handleAddSubmit() {
     const cancelBtn = document.getElementById('modal-cancel');
 
     if (titleEl) titleEl.textContent = res.info.title || '';
-    if (metaEl) metaEl.textContent = `${t('duration')}: ${formatDurationShort(res.info.duration || 0)} • ${formatNumber(res.info.viewCount || 0)} ${t('views')}`;
+    if (metaEl)
+      metaEl.textContent = `${t('duration')}: ${formatDurationShort(res.info.duration || 0)} • ${formatNumber(res.info.viewCount || 0)} ${t('views')}`;
     if (thumbEl) thumbEl.src = res.info.thumbnail || '';
     if (addAnywayBtn) addAnywayBtn.textContent = t('addAnyway');
     if (cancelBtn) cancelBtn.textContent = t('cancel');
 
     if (errorsEl) {
-      errorsEl.innerHTML = res.errors.map((e: string) => `<div class="modal-error">${escapeHtml(e)}</div>`).join('');
+      errorsEl.innerHTML = res.errors
+        .map((e: string) => `<div class="modal-error">${escapeHtml(e)}</div>`)
+        .join('');
     }
   } catch {
     showToast(t('fetchFailed'));
@@ -916,12 +1218,20 @@ async function confirmManualAdd() {
 function init() {
   applyPlayerHeight();
 
-  document.getElementById('btn-play-pause')?.addEventListener('click', togglePlayPause);
+  document
+    .getElementById('btn-play-pause')
+    ?.addEventListener('click', togglePlayPause);
   document.getElementById('btn-skip')?.addEventListener('click', nextSong);
   document.getElementById('btn-prev')?.addEventListener('click', prevSong);
-  document.getElementById('btn-hide-player')?.addEventListener('click', () => togglePlayerVisibility(!state.playerHidden));
+  document
+    .getElementById('btn-hide-player')
+    ?.addEventListener('click', () =>
+      togglePlayerVisibility(!state.playerHidden)
+    );
 
-  const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement;
+  const volumeSlider = document.getElementById(
+    'volume-slider'
+  ) as HTMLInputElement;
   if (volumeSlider) {
     volumeSlider.addEventListener('input', () => {
       const vol = parseInt(volumeSlider.value);
@@ -929,7 +1239,9 @@ function init() {
     });
   }
 
-  const qualitySelect = document.getElementById('quality-select') as HTMLSelectElement;
+  const qualitySelect = document.getElementById(
+    'quality-select'
+  ) as HTMLSelectElement;
   if (qualitySelect) {
     qualitySelect.value = selectedQuality;
     qualitySelect.addEventListener('change', () => {
@@ -956,10 +1268,12 @@ function init() {
     let startHeight = 0;
     const playerContainer = document.getElementById('player-container');
 
-    resizeHandle.addEventListener('mousedown', (e) => {
+    resizeHandle.addEventListener('mousedown', e => {
       e.preventDefault();
       startY = (e as MouseEvent).clientY;
-      startHeight = playerContainer ? playerContainer.offsetHeight : state.playerHeight;
+      startHeight = playerContainer
+        ? playerContainer.offsetHeight
+        : state.playerHeight;
       resizeHandle.classList.add('active');
       document.body.style.cursor = 'ns-resize';
       document.body.style.userSelect = 'none';
@@ -971,6 +1285,7 @@ function init() {
         if (playerContainer) {
           playerContainer.style.height = `${newHeight}px`;
           playerContainer.style.maxHeight = `${newHeight}px`;
+          applyPlaybackQuality();
         }
       };
 
@@ -983,6 +1298,7 @@ function init() {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         if (playerContainer) playerContainer.style.pointerEvents = '';
+        applyPlaybackQuality();
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
       };
@@ -992,30 +1308,35 @@ function init() {
     });
   }
 
-  document.getElementById('btn-open-add')?.addEventListener('click', openAddModal);
-  document.getElementById('btn-add')?.addEventListener('click', handleAddSubmit);
+  document
+    .getElementById('btn-open-add')
+    ?.addEventListener('click', openAddModal);
+  document
+    .getElementById('btn-add')
+    ?.addEventListener('click', handleAddSubmit);
   const addInput = document.getElementById('add-input') as HTMLInputElement;
   if (addInput) {
-    addInput.addEventListener('keydown', (e) => {
+    addInput.addEventListener('keydown', e => {
       if (e.key === 'Enter') handleAddSubmit();
     });
   }
 
   document.getElementById('modal-close')?.addEventListener('click', closeModal);
-  document.getElementById('modal-cancel')?.addEventListener('click', closeModal);
-  document.getElementById('modal-add-anyway')?.addEventListener('click', confirmManualAdd);
-  document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
+  document
+    .getElementById('modal-cancel')
+    ?.addEventListener('click', closeModal);
+  document
+    .getElementById('modal-add-anyway')
+    ?.addEventListener('click', confirmManualAdd);
+  document.getElementById('modal-overlay')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeModal();
   });
 
   loadState().then(() => {
     startPolling();
   });
-}
 
-declare global {
-  const YT: any;
-  function onYouTubeIframeAPIReady(): void;
+  watchPlayerContainerResize();
 }
 
 let youtubeLoaded = false;
@@ -1031,26 +1352,7 @@ function loadYouTubeAPI() {
 
 window.onYouTubeIframeAPIReady = () => {
   youtubeApiReady = true;
-  player = new YT.Player('player', {
-    height: '100%',
-    width: '100%',
-    playerVars: {
-      controls: 0,
-      disablekb: 1,
-      fs: 0,
-      iv_load_policy: 3,
-      modestbranding: 1,
-      rel: 0,
-      showinfo: 0,
-      autoplay: 1,
-      playsinline: 1,
-    },
-    events: {
-      onStateChange: onPlayerStateChange,
-      onReady: onPlayerReady,
-      onError: onPlayerError,
-    },
-  });
+  createYouTubePlayer();
 };
 
 loadYouTubeAPI();
