@@ -23,7 +23,7 @@
     "CONFIG_READ",
     "STATUS"
   ],
-  "app_version": "1.0.33",
+  "app_version": "1.0.36",
   "web": "index.html",
   "web_type": "application",
   "web_contents": [
