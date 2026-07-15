@@ -11,7 +11,7 @@
     "uk": "Система замовлення музики з YouTube. Глядачі донатять та замовляють треки в чергу."
   },
   "type": "application",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "RocketMan System",
   "icon": "logo.svg",
   "permissions": [
