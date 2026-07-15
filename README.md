@@ -1,9 +1,11 @@
-# My StreamKit Addon
+# Song Request
 
 Integration addon for StreamKit+.
 
 - **Addon id:** `song-request`
 - **Type:** `application`
+
+UI styles follow the main app theme via `/data/styles.css` (CSS variables and `.App` controls). Addon CSS only covers layout and song-request-specific pieces.
 
 
 ## Development

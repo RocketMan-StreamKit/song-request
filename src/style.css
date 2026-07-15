@@ -1,36 +1,15 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
 :root {
-  --bg: var(--sk-bg-primary, #1a1a2e);
-  --bg-secondary: var(--sk-bg-secondary, #16213e);
-  --bg-card: var(--sk-bg-card, #0f3460);
-  --bg-hover: var(--sk-bg-hover, #1a4a7a);
-  --text: var(--sk-text-primary, #e0e0e0);
-  --text-secondary: var(--sk-text-secondary, #a0a0b0);
-  --accent: var(--sk-accent, #e94560);
-  --accent-hover: var(--sk-accent-hover, #ff6b81);
-  --border: var(--sk-border, #2a2a4a);
-  --radius: var(--sk-radius, 8px);
-  --shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   --player-height: 360px;
   --controls-height: 48px;
   --progress-height: 32px;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-}
-
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 14px;
 }
 
 #app {
@@ -38,11 +17,21 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-size-md);
+  box-sizing: border-box;
+}
+
+#app *,
+#app *::before,
+#app *::after {
+  box-sizing: border-box;
 }
 
 #player-area {
   flex-shrink: 0;
-  background: var(--bg-secondary);
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
@@ -78,7 +67,7 @@ body {
   transform: translate(-50%, -50%);
   width: 30px;
   height: 2px;
-  background: var(--text-secondary);
+  background: var(--text-muted);
   border-radius: 1px;
   opacity: 0.4;
 }
@@ -112,9 +101,10 @@ body {
   border-top: 1px solid var(--border);
 }
 
-#time-current, #time-total {
-  font-size: 11px;
-  color: var(--text-secondary);
+#time-current,
+#time-total {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   min-width: 36px;
@@ -169,16 +159,18 @@ body {
   background: none;
   border: none;
   color: var(--text);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   transition: background 0.2s;
   line-height: 1;
+  height: auto;
+  min-width: 0;
 }
 
 #player-controls button:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--btn-primary) 12%, var(--bg-panel) 88%);
 }
 
 #player-controls .spacer {
@@ -192,8 +184,8 @@ body {
 }
 
 .vol-icon {
-  font-size: 14px;
-  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  color: var(--text-muted);
 }
 
 #volume-slider {
@@ -227,32 +219,23 @@ body {
 }
 
 #quality-select {
-  background: var(--bg-secondary);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-}
-
-#quality-select:focus {
-  border-color: var(--accent);
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: var(--font-size-sm);
 }
 
 #now-playing {
   padding: 4px 12px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  background: var(--bg-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  background: var(--bg-panel);
   border-top: 1px solid var(--border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-
 
 #queue-area {
   flex: 1;
@@ -273,7 +256,7 @@ body {
 
 #queue-title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
@@ -284,29 +267,31 @@ body {
 }
 
 #queue-count {
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
 }
 
 #btn-open-add {
-  background: var(--accent);
-  color: #fff;
+  background: var(--btn-primary);
+  color: var(--bg);
   border: none;
   border-radius: 50%;
   width: 28px;
   height: 28px;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  min-width: 0;
   transition: background 0.2s, transform 0.15s;
 }
 
 #btn-open-add:hover {
-  background: var(--accent-hover);
+  background: color-mix(in srgb, var(--btn-primary) 82%, white 18%);
   transform: scale(1.1);
 }
 
@@ -317,8 +302,8 @@ body {
   flex: 1;
   padding: 32px 16px;
   text-align: center;
-  color: var(--text-secondary);
-  font-size: 14px;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
 }
 
 #queue-empty.hidden {
@@ -339,8 +324,8 @@ body {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  background: var(--bg-display);
   margin-bottom: 6px;
   cursor: grab;
   transition: background 0.2s, transform 0.15s, box-shadow 0.15s;
@@ -349,7 +334,7 @@ body {
 }
 
 .queue-item:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--btn-primary) 12%, var(--bg-panel) 88%);
 }
 
 .queue-item.dragging {
@@ -363,7 +348,7 @@ body {
 
 .queue-item.played {
   opacity: 0.55;
-  border-left: 3px solid var(--text-secondary);
+  border-left: 3px solid var(--text-muted);
 }
 
 .queue-item.played:hover {
@@ -379,16 +364,20 @@ body {
 }
 
 .played-badge {
-  color: #4caf50;
-  font-size: 12px;
+  color: var(--btn-success);
+  font-size: var(--font-size-sm);
   font-weight: bold;
 }
 
 .queue-item.playing {
   opacity: 1;
   border-left: 4px solid var(--accent);
-  background: linear-gradient(135deg, var(--bg-card), var(--accent)cc);
-  box-shadow: inset 0 0 20px rgba(233, 69, 96, 0.15);
+  background: linear-gradient(
+    135deg,
+    var(--bg-display),
+    color-mix(in srgb, var(--accent) 22%, var(--bg-display))
+  );
+  box-shadow: inset 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .queue-item.playing .queue-item-title {
@@ -408,10 +397,10 @@ body {
 .queue-item-thumb {
   width: 56px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
   flex-shrink: 0;
-  background: #333;
+  background: var(--bg-panel);
 }
 
 .queue-item-info {
@@ -420,7 +409,7 @@ body {
 }
 
 .queue-item-title {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -428,8 +417,8 @@ body {
 }
 
 .queue-item-meta {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
   margin-top: 2px;
   display: flex;
   gap: 8px;
@@ -445,35 +434,31 @@ body {
 .queue-item-actions button {
   background: none;
   border: none;
-  color: var(--text-secondary);
-  font-size: 16px;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.2s, color 0.2s;
   line-height: 1;
+  height: auto;
+  min-width: 0;
 }
 
 .queue-item-actions button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--btn-primary) 12%, var(--bg-panel) 88%);
   color: var(--text);
 }
 
-.queue-item-actions .btn-remove:hover {
-  color: var(--accent);
-}
-
-.queue-item-actions .btn-play:hover {
-  color: var(--accent);
-}
-
+.queue-item-actions .btn-remove:hover,
+.queue-item-actions .btn-play:hover,
 .queue-item-actions .btn-toggle:hover {
   color: var(--accent);
 }
 
 .queue-item-duration {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -490,12 +475,12 @@ body {
 }
 
 .toast {
-  background: var(--bg-card);
+  background: var(--bg-display);
   color: var(--text);
   padding: 12px 16px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--bg) 40%, transparent);
+  font-size: var(--font-size-sm);
   max-width: 320px;
   pointer-events: auto;
   animation: toast-in 0.3s ease;
@@ -519,7 +504,7 @@ body {
 #modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -531,10 +516,10 @@ body {
 }
 
 #modal {
-  background: var(--bg-secondary);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--bg) 50%, transparent);
   width: 90%;
   max-width: 440px;
   max-height: 80vh;
@@ -552,22 +537,24 @@ body {
 }
 
 #modal-title {
-  font-size: 15px;
+  font-size: var(--font-size-md);
   font-weight: 600;
 }
 
 #modal-close {
   background: none;
   border: none;
-  color: var(--text-secondary);
-  font-size: 16px;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+  height: auto;
+  min-width: 0;
 }
 
 #modal-close:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--btn-primary) 12%, var(--bg-panel) 88%);
   color: var(--text);
 }
 
@@ -585,23 +572,8 @@ body {
 
 #add-input {
   flex: 1;
-  background: var(--bg-card);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
+  width: auto;
   min-width: 0;
-}
-
-#add-input:focus {
-  border-color: var(--accent);
-}
-
-#add-input::placeholder {
-  color: var(--text-secondary);
 }
 
 #add-spinner {
@@ -623,26 +595,15 @@ body {
 }
 
 #btn-add {
-  background: var(--accent);
-  color: #fff;
+  background: var(--btn-primary);
+  color: var(--bg);
   border: none;
-  border-radius: var(--radius);
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
   white-space: nowrap;
-  transition: background 0.2s;
   flex-shrink: 0;
 }
 
 #btn-add:hover {
-  background: var(--accent-hover);
-}
-
-#btn-add:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  background: color-mix(in srgb, var(--btn-primary) 82%, white 18%);
 }
 
 #add-result.hidden {
@@ -662,10 +623,10 @@ body {
 #modal-thumb {
   width: 100px;
   height: 56px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   object-fit: cover;
   flex-shrink: 0;
-  background: #333;
+  background: var(--bg-display);
 }
 
 #modal-video-details {
@@ -676,7 +637,7 @@ body {
 }
 
 #modal-video-title {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -684,8 +645,8 @@ body {
 }
 
 #modal-video-meta {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
 }
 
 #modal-errors {
@@ -696,11 +657,11 @@ body {
 
 .modal-error {
   padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  background: rgba(233, 69, 96, 0.12);
-  color: #ff6b81;
-  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: color-mix(in srgb, var(--btn-danger) 12%, var(--bg-panel));
+  color: var(--btn-danger);
+  border-left: 3px solid var(--btn-danger);
 }
 
 #modal-footer {
@@ -715,35 +676,14 @@ body {
   display: none;
 }
 
-#modal-cancel {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: var(--radius);
-  padding: 8px 16px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-#modal-cancel:hover {
-  background: var(--bg-hover);
-}
-
 #modal-add-anyway {
-  background: var(--accent);
-  color: #fff;
+  background: var(--btn-primary);
+  color: var(--bg);
   border: none;
-  border-radius: var(--radius);
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
 }
 
 #modal-add-anyway:hover {
-  background: var(--accent-hover);
+  background: color-mix(in srgb, var(--btn-primary) 82%, white 18%);
 }
 
 @media (max-width: 600px) {
@@ -771,7 +711,7 @@ body {
   }
 
   .queue-item-title {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
   }
 
   #queue-header {
