@@ -1,91 +1,166 @@
-GenerateConfig([
-  {
-    key: 'cost',
-    type: 'number',
-    default: 1,
-    editor: {
-      label: {
-        en: 'Cost per song',
-        ru: 'Стоимость заказа',
-        uk: 'Вартість замовлення',
-      },
-      description: {
-        en: 'Minimum donation amount to request a song',
-        ru: 'Минимальная сумма доната для заказа трека',
-        uk: 'Мінімальна сума донату для замовлення треку',
-      },
-    },
-  },
-  {
-    key: 'currency',
-    type: 'text',
-    default: 'USD',
-    editor: {
-      label: { en: 'Currency', ru: 'Валюта', uk: 'Валюта' },
-      description: {
-        en: 'Currency code (e.g. USD, EUR, RUB)',
-        ru: 'Код валюты (например USD, EUR, RUB)',
-        uk: 'Код валюти (наприклад USD, EUR, UAH)',
-      },
-    },
-  },
-  {
-    key: 'maxDuration',
-    type: 'number',
-    default: 240,
-    editor: {
-      label: {
-        en: 'Max duration (seconds)',
-        ru: 'Макс. длительность (сек)',
-        uk: 'Макс. тривалість (сек)',
-      },
-      description: {
-        en: 'Maximum allowed song length in seconds (0 = no limit)',
-        ru: 'Максимальная длительность трека в секундах (0 = без лимита)',
-        uk: 'Максимальна тривалість треку в секундах (0 = без ліміту)',
+/** Fallback when `currency.getList` is unavailable during load. */
+const FALLBACK_CURRENCY_OPTIONS: { value: string; label: { en: string } }[] = [
+  { value: 'USD', label: { en: 'United States Dollar (USD)' } },
+];
+
+/**
+ * Builds the addon settings schema for the given currency options.
+ * @param currencyOptions Select options for the currency field.
+ * @returns Schema passed to `GenerateConfig`.
+ * @example
+ * GenerateConfig(buildSettingsSchema(FALLBACK_CURRENCY_OPTIONS));
+ */
+function buildSettingsSchema(
+  currencyOptions: { value: string; label: { en: string } }[]
+) {
+  return [
+    {
+      key: '_about',
+      type: 'info' as const,
+      editor: {
+        label: {
+          en: 'How it works',
+          ru: 'Как это работает',
+          uk: 'Як це працює',
+        },
+        description: {
+          en: 'This addon lets viewers request music via donations. If a donation message contains a YouTube video link and the amount is at least the minimum set below, the video is added to the queue when it also passes the other filters (duration, views, likes).',
+          ru: 'Этот аддон нужен для заказа музыки. Зрители могут донатить, указывая ссылку на YouTube-видео в тексте доната. Если ссылка подходит под текущие настройки и сумма доната равна или больше минимальной, трек попадает в очередь.',
+          uk: 'Цей аддон потрібен для замовлення музики. Глядачі можуть донатити, вказуючи посилання на YouTube-відео в тексті донату. Якщо посилання підходить під поточні налаштування і сума донату дорівнює або більша за мінімальну, трек потрапляє в чергу.',
+        },
+        infoBorder: 'blue' as const,
       },
     },
-  },
-  {
-    key: 'minViews',
-    type: 'number',
-    default: 0,
-    editor: {
-      label: { en: 'Min views', ru: 'Мин. просмотров', uk: 'Мін. переглядів' },
-      description: {
-        en: 'Minimum view count (0 = no limit)',
-        ru: 'Минимальное количество просмотров (0 = без лимита)',
-        uk: 'Мінімальна кількість переглядів (0 = без ліміту)',
+    {
+      key: 'enabled',
+      type: 'boolean' as const,
+      default: true,
+      editor: {
+        label: { en: 'Enabled', ru: 'Включено', uk: 'Увімкнено' },
+        description: {
+          en: 'Enable song request system',
+          ru: 'Включить систему заказа музыки',
+          uk: 'Увімкнути систему замовлення музики',
+        },
       },
     },
-  },
-  {
-    key: 'minLikes',
-    type: 'number',
-    default: 0,
-    editor: {
-      label: { en: 'Min likes', ru: 'Мин. лайков', uk: 'Мін. лайків' },
-      description: {
-        en: 'Minimum like count (0 = no limit)',
-        ru: 'Минимальное количество лайков (0 = без лимита)',
-        uk: 'Мінімальна кількість лайків (0 = без ліміту)',
+    {
+      key: 'cost',
+      type: 'number' as const,
+      default: 1,
+      editor: {
+        label: {
+          en: 'Cost per song',
+          ru: 'Стоимость заказа',
+          uk: 'Вартість замовлення',
+        },
+        description: {
+          en: 'Minimum donation amount to request a song',
+          ru: 'Минимальная сумма доната для заказа трека',
+          uk: 'Мінімальна сума донату для замовлення треку',
+        },
       },
     },
-  },
-  {
-    key: 'enabled',
-    type: 'boolean',
-    default: true,
-    editor: {
-      label: { en: 'Enabled', ru: 'Включено', uk: 'Увімкнено' },
-      description: {
-        en: 'Enable song request system',
-        ru: 'Включить систему заказа музыки',
-        uk: 'Увімкнути систему замовлення музики',
+    {
+      key: 'currency',
+      type: 'select' as const,
+      default: 'USD',
+      options: currencyOptions,
+      editor: {
+        label: { en: 'Currency', ru: 'Валюта', uk: 'Валюта' },
+        description: {
+          en: 'Currency for the minimum donation amount',
+          ru: 'Валюта минимальной суммы доната',
+          uk: 'Валюта мінімальної суми донату',
+        },
       },
     },
-  },
-]);
+    {
+      key: 'maxDuration',
+      type: 'number' as const,
+      default: 240,
+      editor: {
+        label: {
+          en: 'Max duration (seconds)',
+          ru: 'Макс. длительность (сек)',
+          uk: 'Макс. тривалість (сек)',
+        },
+        description: {
+          en: 'Maximum allowed song length in seconds (0 = no limit)',
+          ru: 'Максимальная длительность трека в секундах (0 = без лимита)',
+          uk: 'Максимальна тривалість треку в секундах (0 = без ліміту)',
+        },
+      },
+    },
+    {
+      key: 'minViews',
+      type: 'number' as const,
+      default: 0,
+      editor: {
+        label: {
+          en: 'Min views',
+          ru: 'Мин. просмотров',
+          uk: 'Мін. переглядів',
+        },
+        description: {
+          en: 'Minimum view count (0 = no limit)',
+          ru: 'Минимальное количество просмотров (0 = без лимита)',
+          uk: 'Мінімальна кількість переглядів (0 = без ліміту)',
+        },
+      },
+    },
+    {
+      key: 'minLikes',
+      type: 'number' as const,
+      default: 0,
+      editor: {
+        label: { en: 'Min likes', ru: 'Мин. лайков', uk: 'Мін. лайків' },
+        description: {
+          en: 'Minimum like count (0 = no limit)',
+          ru: 'Минимальное количество лайков (0 = без лимита)',
+          uk: 'Мінімальна кількість лайків (0 = без ліміту)',
+        },
+      },
+    },
+  ];
+}
+
+// Register synchronously-started but ordered async schema setup.
+// A fire-and-forget GenerateConfig(USD) raced with the later full-list
+// update and could overwrite it, leaving only USD in the select.
+void registerSettings();
+
+/**
+ * Registers settings with a USD fallback, then replaces currency options
+ * from `currency.getList` once available.
+ * @example
+ * void registerSettings();
+ */
+async function registerSettings(): Promise<void> {
+  try {
+    const list = await currency.getList();
+    if (list.success && list.currencies.length) {
+      const options = list.currencies.map(({ key, name }) => ({
+        value: key,
+        label: { en: `${name} (${key})` },
+      }));
+      await GenerateConfig(buildSettingsSchema(options));
+      return;
+    }
+  } catch {}
+  await GenerateConfig(buildSettingsSchema(FALLBACK_CURRENCY_OPTIONS));
+}
+
+/**
+ * Normalizes a currency code from settings (trim + uppercase).
+ * @param value Raw currency string from params.
+ * @returns Normalized ISO-style code, or empty string when missing.
+ * @example normalizeCurrencyCode(' usd ') // 'USD'
+ */
+function normalizeCurrencyCode(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim().toUpperCase();
+}
 
 interface SongEntry {
   id: string;
@@ -363,12 +438,14 @@ async function init() {
     const [donationAmount, donationCurrency] = amount;
 
     const costValue = currentSettings.cost || 1;
-    const costCurrency = currentSettings.currency || 'USD';
+    const costCurrency =
+      normalizeCurrencyCode(currentSettings.currency) || 'USD';
+    const fromCurrency = normalizeCurrencyCode(donationCurrency);
 
-    if (donationCurrency !== costCurrency) {
+    if (fromCurrency !== costCurrency) {
       const converted = await currency.convert(
         donationAmount,
-        donationCurrency as any,
+        fromCurrency as any,
         costCurrency as any
       );
       if (!converted.success || converted.amount < costValue) return;
