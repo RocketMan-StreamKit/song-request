@@ -45,6 +45,92 @@ function buildSettingsSchema(
       },
     },
     {
+      key: 'playbackMode',
+      type: 'select' as const,
+      default: 'iframe',
+      options: [
+        {
+          value: 'iframe',
+          label: {
+            en: 'YouTube iFrame',
+            ru: 'YouTube iFrame',
+            uk: 'YouTube iFrame',
+          },
+        },
+        {
+          value: 'local',
+          label: {
+            en: 'Download clip to PC',
+            ru: 'Загрузка клипа на ПК',
+            uk: 'Завантаження кліпу на ПК',
+          },
+        },
+      ],
+      editor: {
+        label: {
+          en: 'Playback mode',
+          ru: 'Режим воспроизведения',
+          uk: 'Режим відтворення',
+        },
+        description: {
+          en: 'YouTube iFrame — play via the embedded YouTube player (default). Download clip to PC — download with yt-dlp when a track starts, then play the local file in this window (more reliable when YouTube embeds break).',
+          ru: 'YouTube iFrame — воспроизведение через встроенный плеер YouTube (по умолчанию). Загрузка клипа на ПК — при старте трека файл скачивается через yt-dlp и воспроизводится локально в этом окне (надёжнее, если iframe YouTube перестаёт работать).',
+          uk: 'YouTube iFrame — відтворення через вбудований плеєр YouTube (за замовчуванням). Завантаження кліпу на ПК — на старті треку файл завантажується через yt-dlp і відтворюється локально в цьому вікні (надійніше, якщо iframe YouTube перестає працювати).',
+        },
+      },
+    },
+    {
+      key: 'downloadQuality',
+      type: 'select' as const,
+      default: 'audio',
+      options: [
+        {
+          value: 'audio',
+          label: {
+            en: 'Audio only',
+            ru: 'Только звук',
+            uk: 'Лише звук',
+          },
+        },
+        {
+          value: 'low',
+          label: {
+            en: 'Low video quality',
+            ru: 'Низкое качество видео',
+            uk: 'Низька якість відео',
+          },
+        },
+        {
+          value: 'medium',
+          label: {
+            en: 'Medium video quality',
+            ru: 'Среднее качество видео',
+            uk: 'Середня якість відео',
+          },
+        },
+        {
+          value: 'high',
+          label: {
+            en: 'High video quality',
+            ru: 'Высокое качество видео',
+            uk: 'Висока якість відео',
+          },
+        },
+      ],
+      editor: {
+        label: {
+          en: 'Download quality',
+          ru: 'Качество загрузки',
+          uk: 'Якість завантаження',
+        },
+        description: {
+          en: 'Used only in “Download clip to PC” mode. Files are cached as {videoId}_song.*, {videoId}_low.*, {videoId}_medium.*, or {videoId}_high.* in the addon temp folder.',
+          ru: 'Только для режима «Загрузка клипа на ПК». Файлы кэшируются как {videoId}_song.*, {videoId}_low.*, {videoId}_medium.* или {videoId}_high.* во временной папке аддона.',
+          uk: 'Лише для режиму «Завантаження кліпу на ПК». Файли кешуються як {videoId}_song.*, {videoId}_low.*, {videoId}_medium.* або {videoId}_high.* у тимчасовій папці аддона.',
+        },
+      },
+    },
+    {
       key: 'cost',
       type: 'number' as const,
       default: 1,
@@ -160,6 +246,199 @@ async function registerSettings(): Promise<void> {
 function normalizeCurrencyCode(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.trim().toUpperCase();
+}
+
+/** Playback mode from addon settings. */
+type PlaybackMode = 'iframe' | 'local';
+
+/** Local download quality preset for yt-dlp mode. */
+type DownloadQuality = 'audio' | 'low' | 'medium' | 'high';
+
+/**
+ * Joins path segments under `ADDON_TMP_DIR` using the host OS separator.
+ * @param parts Relative path segments inside the addon temp folder.
+ * @returns Absolute path string.
+ * @example
+ * joinAddonTmp('dQw4w9WgXcQ_song.m4a');
+ */
+function joinAddonTmp(...parts: string[]): string {
+  const sep = ADDON_TMP_DIR.includes('\\') ? '\\' : '/';
+  return [ADDON_TMP_DIR.replace(/[/\\]+$/, ''), ...parts].join(sep);
+}
+
+/**
+ * Returns the filename stem for a cached media file.
+ * @param videoId YouTube video id.
+ * @param quality Download quality preset.
+ * @example mediaFileStem('dQw4w9WgXcQ', 'audio'); // 'dQw4w9WgXcQ_song'
+ */
+function mediaFileStem(videoId: string, quality: DownloadQuality): string {
+  switch (quality) {
+    case 'audio':
+      return `${videoId}_song`;
+    case 'low':
+      return `${videoId}_low`;
+    case 'medium':
+      return `${videoId}_medium`;
+    case 'high':
+      return `${videoId}_high`;
+  }
+}
+
+/** Candidate extensions searched when looking up a cached clip. */
+const MEDIA_EXTS_BY_QUALITY: Record<DownloadQuality, string[]> = {
+  audio: ['.m4a', '.mp3', '.webm', '.opus', '.aac', '.ogg'],
+  low: ['.mp4', '.webm', '.mkv'],
+  medium: ['.mp4', '.webm', '.mkv'],
+  high: ['.mp4', '.webm', '.mkv'],
+};
+
+/**
+ * yt-dlp conversion options for a download quality preset.
+ * @param quality Download quality preset.
+ * @example getYtDlpOptionsForQuality('audio');
+ */
+function getYtDlpOptionsForQuality(quality: DownloadQuality): {
+  format: string;
+  extractAudio?: boolean;
+  audioFormat?: string;
+  mergeOutputFormat?: string;
+} {
+  switch (quality) {
+    case 'audio':
+      return {
+        format: 'ba/bestaudio',
+        extractAudio: true,
+        audioFormat: 'm4a',
+      };
+    case 'low':
+      return {
+        format: 'bv*[height' + '<=360]+ba/b[height' + '<=360]',
+        mergeOutputFormat: 'mp4',
+      };
+    case 'medium':
+      return {
+        format: 'bv*[height' + '<=720]+ba/b[height' + '<=720]',
+        mergeOutputFormat: 'mp4',
+      };
+    case 'high':
+      return {
+        format: 'bv*[height' + '<=1080]+ba/b[height' + '<=1080]',
+        mergeOutputFormat: 'mp4',
+      };
+  }
+}
+
+/**
+ * Reads playback mode from settings (default: iframe).
+ * @param settings Addon params blob.
+ * @example getPlaybackMode(currentSettings);
+ */
+function getPlaybackMode(settings: Record<string, unknown>): PlaybackMode {
+  return settings.playbackMode === 'local' ? 'local' : 'iframe';
+}
+
+/**
+ * Reads download quality from settings (default: audio).
+ * @param settings Addon params blob.
+ * @example getDownloadQuality(currentSettings);
+ */
+function getDownloadQuality(
+  settings: Record<string, unknown>
+): DownloadQuality {
+  const value = settings.downloadQuality;
+  if (
+    value === 'audio' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high'
+  ) {
+    return value;
+  }
+  return 'audio';
+}
+
+/**
+ * Finds an already-downloaded media file for a video id and quality.
+ * @param videoId YouTube video id.
+ * @param quality Download quality preset.
+ * @returns Absolute file path, or `null` when missing.
+ * @example
+ * const path = await findCachedMedia('dQw4w9WgXcQ', 'audio');
+ */
+async function findCachedMedia(
+  videoId: string,
+  quality: DownloadQuality
+): Promise<string | null> {
+  const stem = mediaFileStem(videoId, quality);
+  for (const ext of MEDIA_EXTS_BY_QUALITY[quality]) {
+    const filePath = joinAddonTmp(`${stem}${ext}`);
+    const exists = (await files.exists(filePath)) as {
+      success?: boolean;
+      exists?: boolean;
+    };
+    if (exists?.success && exists.exists) {
+      return filePath;
+    }
+  }
+  return null;
+}
+
+/** In-flight local downloads keyed by `videoId:quality`. */
+const activeMediaDownloads = new Map<string, Promise<string>>();
+
+/**
+ * Ensures a local media file exists for the given video, downloading via yt-dlp when needed.
+ * @param videoId YouTube video id.
+ * @param quality Download quality preset.
+ * @returns Absolute path to the cached file.
+ * @example
+ * const filePath = await ensureLocalMedia('dQw4w9WgXcQ', 'audio');
+ */
+async function ensureLocalMedia(
+  videoId: string,
+  quality: DownloadQuality
+): Promise<string> {
+  const cached = await findCachedMedia(videoId, quality);
+  if (cached) return cached;
+
+  const key = `${videoId}:${quality}`;
+  const pending = activeMediaDownloads.get(key);
+  if (pending) return pending;
+
+  const downloadPromise = (async () => {
+    const stem = mediaFileStem(videoId, quality);
+    const outputPath = joinAddonTmp(`${stem}.%(ext)s`);
+    const convert = getYtDlpOptionsForQuality(quality);
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const downloadId = random.id();
+
+    console.log('[song-request][media] downloading', {
+      videoId,
+      quality,
+      outputPath,
+    });
+
+    const result = await ytdlp.downloadFile(url, outputPath, {
+      downloadId,
+      ...convert,
+    });
+
+    if (!result.success) {
+      throw new Error(result.message || result.error || 'Download failed');
+    }
+
+    const found = await findCachedMedia(videoId, quality);
+    if (!found) {
+      throw new Error('Download finished but media file was not found');
+    }
+    return found;
+  })().finally(() => {
+    activeMediaDownloads.delete(key);
+  });
+
+  activeMediaDownloads.set(key, downloadPromise);
+  return downloadPromise;
 }
 
 interface SongEntry {
@@ -508,6 +787,8 @@ async function init() {
   network.endpoints.create('player', 'POST', 'onUpdatePlayer');
   network.endpoints.create('validate-url', 'POST', 'onValidateUrl');
   network.endpoints.create('manual-add', 'POST', 'onManualAdd');
+  network.endpoints.create('prepare-media', 'POST', 'onPrepareMedia');
+  network.endpoints.create('media', 'GET', 'onMedia');
 
   try {
     await dashboard.registerAttaches([
@@ -576,14 +857,72 @@ async function init() {
     } catch {}
   });
 
-  events.On('onGetState', async () => {
+  events.On('onGetState', async ({ query }) => {
+    if (query?.token !== data.token) {
+      return { success: false, message: 'Unauthorized' };
+    }
     await loadSettings();
     return {
       success: true,
       state: currentState,
-      settings: currentSettings,
+      settings: {
+        ...currentSettings,
+        playbackMode: getPlaybackMode(currentSettings),
+        downloadQuality: getDownloadQuality(currentSettings),
+      },
       lang: LANG.current,
     };
+  });
+
+  events.On('onPrepareMedia', async ({ query, body }) => {
+    if (query?.token !== data.token) {
+      return { success: false, message: 'Unauthorized' };
+    }
+    await loadSettings();
+    if (getPlaybackMode(currentSettings) !== 'local') {
+      return { success: false, message: 'Local playback mode is not enabled' };
+    }
+    const videoId =
+      typeof body?.videoId === 'string' ? body.videoId.trim() : '';
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      return { success: false, message: 'Invalid video id' };
+    }
+    const quality = getDownloadQuality(currentSettings);
+    try {
+      const filePath = await ensureLocalMedia(videoId, quality);
+      const fileName = filePath.split(/[/\\]/).pop() || '';
+      return {
+        success: true,
+        videoId,
+        quality,
+        fileName,
+        mediaKind: quality === 'audio' ? 'audio' : 'video',
+      };
+    } catch (err) {
+      console.error('[song-request][media] prepare failed', err);
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Download failed',
+      };
+    }
+  });
+
+  events.On('onMedia', async ({ query }) => {
+    if (query?.token !== data.token) {
+      return { success: false, message: 'Unauthorized' };
+    }
+    await loadSettings();
+    const videoId =
+      typeof query?.videoId === 'string' ? String(query.videoId).trim() : '';
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      return { success: false, message: 'Invalid video id' };
+    }
+    const quality = getDownloadQuality(currentSettings);
+    const filePath = await findCachedMedia(videoId, quality);
+    if (!filePath) {
+      return { success: false, message: 'Media file not found' };
+    }
+    return { file: filePath };
   });
 
   events.On('onUpdateQueue', ({ body }) => {

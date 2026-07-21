@@ -85,6 +85,23 @@ body {
   height: 100%;
 }
 
+#local-player {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+#local-player.hidden,
+#player.hidden,
+#player-container.hidden,
+#resize-handle.hidden,
+#btn-hide-player.hidden,
+#quality-select.hidden {
+  display: none !important;
+}
+
 #player iframe {
   width: 100%;
   height: 100%;

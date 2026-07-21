@@ -45,6 +45,9 @@ const T = {
     invalidUrl: 'Invalid YouTube URL',
     fetchFailed: 'Could not fetch video info',
     addError: 'Failed to add song',
+    downloading: 'Downloading…',
+    downloadFailed: 'Failed to download clip',
+    localAudio: 'Audio',
   },
   ru: {
     queue: 'История заказов',
@@ -84,6 +87,9 @@ const T = {
     invalidUrl: 'Неверная ссылка YouTube',
     fetchFailed: 'Не удалось получить информацию о видео',
     addError: 'Ошибка при добавлении',
+    downloading: 'Загрузка…',
+    downloadFailed: 'Не удалось скачать клип',
+    localAudio: 'Аудио',
   },
   uk: {
     queue: 'Історія замовлень',
@@ -124,6 +130,9 @@ const T = {
     invalidUrl: 'Невірне посилання YouTube',
     fetchFailed: 'Не вдалося отримати інформацію про відео',
     addError: 'Помилка при додаванні',
+    downloading: 'Завантаження…',
+    downloadFailed: 'Не вдалося завантажити кліп',
+    localAudio: 'Аудіо',
   },
 };
 
@@ -183,6 +192,18 @@ interface AppState {
   playAction: PlayAction;
 }
 
+/** Playback mode mirrored from addon settings. */
+type PlaybackMode = 'iframe' | 'local';
+
+/** Local download quality mirrored from addon settings. */
+type DownloadQuality = 'audio' | 'low' | 'medium' | 'high';
+
+/** Addon settings subset used by the application UI. */
+type AppSettings = {
+  playbackMode: PlaybackMode;
+  downloadQuality: DownloadQuality;
+};
+
 /** Current mirrored worker state for the application UI. */
 let state: AppState = {
   queue: [],
@@ -193,8 +214,19 @@ let state: AppState = {
   playToken: 0,
   playAction: 'idle',
 };
+/** Mirrored settings that affect the player (mode / download quality). */
+let appSettings: AppSettings = {
+  playbackMode: 'iframe',
+  downloadQuality: 'audio',
+};
 /** YouTube IFrame player instance, or null before create/after destroy. */
 let player: any = null;
+/** HTML5 media element used in local download mode. */
+let localPlayer: HTMLVideoElement | null = null;
+/** Whether a local-media prepare/download is in flight. */
+let preparingMedia = false;
+/** Video id currently loaded in the local player element. */
+let localLoadedVideoId: string | null = null;
 /** Whether the player reports an active playing state. */
 let isPlaying = false;
 /** Whether the YouTube player `onReady` callback has fired. */
@@ -314,12 +346,30 @@ async function loadState() {
         playAction: 'idle',
         ...data.state,
       };
+      const nextMode =
+        data.settings?.playbackMode === 'local' ? 'local' : 'iframe';
+      const nextQuality =
+        data.settings?.downloadQuality === 'low' ||
+        data.settings?.downloadQuality === 'medium' ||
+        data.settings?.downloadQuality === 'high' ||
+        data.settings?.downloadQuality === 'audio'
+          ? data.settings.downloadQuality
+          : 'audio';
+      const modeChanged = nextMode !== appSettings.playbackMode;
+      appSettings = {
+        playbackMode: nextMode,
+        downloadQuality: nextQuality,
+      };
       if (data.lang && LOCALE[data.lang]) {
         lang = LOCALE[data.lang];
       }
       updateUI();
       updateStaticText();
       applyPlayerHeight();
+      applyPlaybackModeUi();
+      if (modeChanged) {
+        void switchPlaybackMode(nextMode);
+      }
     }
   } catch (err) {
     console.error('Failed to load state:', err);
@@ -546,7 +596,11 @@ async function removeSong(index: number) {
   let currentIndex = state.currentIndex;
 
   if (index === currentIndex) {
-    if (player) {
+    if (isLocalPlaybackMode()) {
+      localPlayer?.pause();
+      isPlaying = false;
+      localLoadedVideoId = null;
+    } else if (player) {
       player.stopVideo();
       isPlaying = false;
     }
@@ -598,7 +652,241 @@ async function playSong(index: number) {
   playCurrent();
 }
 
+/**
+ * Returns true when the UI should use the local HTML5 player.
+ * @example isLocalPlaybackMode();
+ */
+function isLocalPlaybackMode(): boolean {
+  return appSettings.playbackMode === 'local';
+}
+
+/**
+ * Returns true for local mode with audio-only download quality.
+ * In this mode the visual player, resize handle, and show/hide button stay hidden.
+ * @example isLocalAudioOnlyMode();
+ */
+function isLocalAudioOnlyMode(): boolean {
+  return isLocalPlaybackMode() && appSettings.downloadQuality === 'audio';
+}
+
+/**
+ * Builds the authenticated media stream URL for a cached local clip.
+ * @param videoId YouTube video id.
+ * @example buildLocalMediaUrl('dQw4w9WgXcQ');
+ */
+function buildLocalMediaUrl(videoId: string): string {
+  return `${API_BASE}/media?token=${encodeURIComponent(getToken())}&videoId=${encodeURIComponent(videoId)}`;
+}
+
+/**
+ * Shows/hides YouTube quality controls and the visual player chrome
+ * depending on playback mode / download quality.
+ * @example applyPlaybackModeUi();
+ */
+function applyPlaybackModeUi() {
+  const audioOnly = isLocalAudioOnlyMode();
+  const qs = document.getElementById('quality-select');
+  if (qs) {
+    qs.classList.toggle('hidden', isLocalPlaybackMode());
+    (qs as HTMLSelectElement).disabled = isLocalPlaybackMode();
+  }
+  const container = document.getElementById('player-container');
+  if (container) {
+    container.classList.toggle('hidden', audioOnly);
+    container.classList.remove('audio-only');
+  }
+  const resizeHandle = document.getElementById('resize-handle');
+  if (resizeHandle) {
+    resizeHandle.classList.toggle('hidden', audioOnly);
+  }
+  const btnHide = document.getElementById('btn-hide-player');
+  if (btnHide) {
+    btnHide.classList.toggle('hidden', audioOnly);
+  }
+  // Re-evaluate section / eye-button state after mode changes.
+  lastVisKey = '';
+  updatePlayerVisibility();
+}
+
+/**
+ * Switches DOM/player backends when settings change between iframe and local.
+ * @param mode Target playback mode.
+ * @example await switchPlaybackMode('local');
+ */
+async function switchPlaybackMode(mode: PlaybackMode) {
+  const ytMount = document.getElementById('player');
+  const localEl = document.getElementById(
+    'local-player'
+  ) as HTMLVideoElement | null;
+  localPlayer = localEl;
+
+  if (mode === 'local') {
+    if (player && typeof player.destroy === 'function') {
+      try {
+        player.destroy();
+      } catch {
+        // Ignore destroy errors from a half-initialized player
+      }
+      player = null;
+    }
+    playerReady = false;
+    if (ytMount) ytMount.classList.add('hidden');
+    if (localEl) {
+      localEl.classList.remove('hidden');
+      bindLocalPlayerEvents(localEl);
+    }
+    localLoadedVideoId = null;
+    playCurrent();
+    return;
+  }
+
+  if (localEl) {
+    localEl.pause();
+    localEl.removeAttribute('src');
+    localEl.load();
+    localEl.classList.add('hidden');
+  }
+  if (ytMount) ytMount.classList.remove('hidden');
+  localLoadedVideoId = null;
+  if (youtubeApiReady) {
+    createYouTubePlayer();
+  } else {
+    loadYouTubeAPI();
+  }
+}
+
+/**
+ * Binds HTML5 media events once for the local player element.
+ * @param el Local `<video>` element.
+ * @example bindLocalPlayerEvents(localPlayer);
+ */
+function bindLocalPlayerEvents(el: HTMLVideoElement) {
+  if ((el as any)._srBound) return;
+  (el as any)._srBound = true;
+  el.addEventListener('play', () => {
+    isPlaying = true;
+    updatePlayButton();
+    startSeekPolling();
+    markCurrentPlayed();
+  });
+  el.addEventListener('pause', () => {
+    isPlaying = false;
+    updatePlayButton();
+  });
+  el.addEventListener('ended', () => {
+    isPlaying = false;
+    updatePlayButton();
+    stopSeekPolling();
+    seekBarReset();
+    nextSong();
+  });
+  el.addEventListener('error', () => {
+    isPlaying = false;
+    updatePlayButton();
+    markCurrentPlayed().then(() => nextSong());
+  });
+  el.addEventListener('loadedmetadata', () => {
+    updateSeekBar();
+  });
+}
+
+/**
+ * Ensures the local clip is downloaded, then plays it in the HTML5 player.
+ * @example await playCurrentLocal();
+ */
+async function playCurrentLocal() {
+  const item = state.queue[state.currentIndex];
+  const el =
+    localPlayer ||
+    (document.getElementById('local-player') as HTMLVideoElement | null);
+  localPlayer = el;
+  if (!el) return;
+
+  if (!item) {
+    el.pause();
+    el.removeAttribute('src');
+    el.load();
+    localLoadedVideoId = null;
+    isPlaying = false;
+    updatePlayButton();
+    setNowPlaying(t('noSong'));
+    autoHidePlayer();
+    return;
+  }
+
+  autoShowPlayer();
+  applyPlaybackModeUi();
+  setNowPlaying(t('nowPlaying', item.title, item.requestedBy));
+
+  if (localLoadedVideoId === item.videoId && el.src) {
+    try {
+      el.currentTime = item.timestamp || 0;
+      await el.play();
+      isPlaying = true;
+      updatePlayButton();
+      startSeekPolling();
+    } catch {
+      isPlaying = false;
+      updatePlayButton();
+    }
+    return;
+  }
+
+  if (preparingMedia) return;
+  preparingMedia = true;
+  showToast(t('downloading'), 8000);
+  try {
+    const prep = await apiPost('/prepare-media', { videoId: item.videoId });
+    if (!prep.success) {
+      showToast(prep.message || t('downloadFailed'));
+      isPlaying = false;
+      updatePlayButton();
+      return;
+    }
+
+    el.pause();
+    el.src = buildLocalMediaUrl(item.videoId);
+    el.volume = Math.max(0, Math.min(1, state.volume / 100));
+    el.load();
+    await new Promise<void>((resolve, reject) => {
+      const onReady = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error('media load failed'));
+      };
+      const cleanup = () => {
+        el.removeEventListener('loadeddata', onReady);
+        el.removeEventListener('error', onError);
+      };
+      el.addEventListener('loadeddata', onReady, { once: true });
+      el.addEventListener('error', onError, { once: true });
+    });
+
+    localLoadedVideoId = item.videoId;
+    el.currentTime = item.timestamp || 0;
+    await el.play();
+    isPlaying = true;
+    updatePlayButton();
+    startSeekPolling();
+  } catch (err) {
+    console.error('Local playback failed:', err);
+    showToast(t('downloadFailed'));
+    isPlaying = false;
+    updatePlayButton();
+  } finally {
+    preparingMedia = false;
+  }
+}
+
 function playCurrent() {
+  if (isLocalPlaybackMode()) {
+    void playCurrentLocal();
+    return;
+  }
+
   if (!playerReady || !player) return;
 
   const item = state.queue[state.currentIndex];
@@ -628,6 +916,64 @@ function playCurrent() {
  * @example updatePlayerState();
  */
 function updatePlayerState() {
+  if (isLocalPlaybackMode()) {
+    if (
+      typeof state.playToken === 'number' &&
+      state.playToken !== lastPlayToken
+    ) {
+      lastPlayToken = state.playToken;
+      const el =
+        localPlayer ||
+        (document.getElementById('local-player') as HTMLVideoElement | null);
+      if (state.playAction === 'stop') {
+        el?.pause();
+        isPlaying = false;
+        updatePlayButton();
+        return;
+      }
+      if (state.playAction === 'play') {
+        playCurrent();
+        return;
+      }
+    }
+
+    if (state.currentIndex === -1) {
+      const firstUnplayed = state.queue.findIndex(item => !item.played);
+      if (firstUnplayed !== -1) {
+        state.currentIndex = firstUnplayed;
+        apiPost('/player', { currentIndex: firstUnplayed });
+        playCurrent();
+        renderQueue();
+        return;
+      }
+      if (isPlaying) {
+        localPlayer?.pause();
+        isPlaying = false;
+        updatePlayButton();
+      }
+      setNowPlaying(t('noSong'));
+      autoHidePlayer();
+      return;
+    }
+
+    const currentItem = state.queue[state.currentIndex];
+    if (!currentItem) {
+      if (isPlaying) {
+        localPlayer?.pause();
+        isPlaying = false;
+        updatePlayButton();
+      }
+      setNowPlaying(t('noSong'));
+      autoHidePlayer();
+      return;
+    }
+
+    if (localLoadedVideoId !== currentItem.videoId) {
+      playCurrent();
+    }
+    return;
+  }
+
   if (!playerReady || !player) return;
 
   if (
@@ -693,11 +1039,16 @@ let lastVisKey = '';
 function updatePlayerVisibility() {
   const section = document.getElementById('player-video-section');
   const btnHide = document.getElementById('btn-hide-player');
+  const audioOnly = isLocalAudioOnlyMode();
   const nothingPlaying = state.currentIndex === -1 || !state.queue.length;
-  const shouldHide = state.playerHidden || nothingPlaying;
-  const btnDisabled = nothingPlaying;
+  // Audio-only local mode never shows the video chrome; keep the section
+  // (seek bar) visible while a track is current.
+  const shouldHide = audioOnly
+    ? nothingPlaying
+    : state.playerHidden || nothingPlaying;
+  const btnDisabled = nothingPlaying || audioOnly;
 
-  const visKey = `${shouldHide}:${btnDisabled}`;
+  const visKey = `${shouldHide}:${btnDisabled}:${audioOnly}`;
   if (visKey === lastVisKey) return;
   lastVisKey = visKey;
 
@@ -705,6 +1056,15 @@ function updatePlayerVisibility() {
     section.classList.toggle('hidden', shouldHide);
   }
   if (btnHide) {
+    if (audioOnly) {
+      btnHide.classList.add('hidden');
+      (btnHide as HTMLButtonElement).disabled = true;
+      btnHide.style.opacity = '';
+      btnHide.style.pointerEvents = '';
+      btnHide.title = '';
+      return;
+    }
+    btnHide.classList.remove('hidden');
     (btnHide as HTMLButtonElement).disabled = btnDisabled;
     btnHide.style.opacity = btnDisabled ? '0.3' : '1';
     btnHide.style.pointerEvents = btnDisabled ? 'none' : 'auto';
@@ -717,6 +1077,12 @@ function updatePlayerVisibility() {
 }
 
 function autoHidePlayer() {
+  // Visual player chrome is permanently off in local audio-only mode.
+  if (isLocalAudioOnlyMode()) {
+    lastVisKey = '';
+    updatePlayerVisibility();
+    return;
+  }
   if (!state.playerHidden) {
     state.playerHidden = true;
     apiPost('/player', { playerHidden: true });
@@ -725,6 +1091,11 @@ function autoHidePlayer() {
 }
 
 function autoShowPlayer() {
+  if (isLocalAudioOnlyMode()) {
+    lastVisKey = '';
+    updatePlayerVisibility();
+    return;
+  }
   if (state.playerHidden) {
     state.playerHidden = false;
     apiPost('/player', { playerHidden: false });
@@ -741,6 +1112,10 @@ async function togglePlayerVisibility(hide: boolean) {
 async function setVolume(vol: number) {
   state.volume = Math.max(0, Math.min(100, vol));
   await apiPost('/player', { volume: state.volume });
+  if (isLocalPlaybackMode() && localPlayer) {
+    localPlayer.volume = Math.max(0, Math.min(1, state.volume / 100));
+    return;
+  }
   if (player && playerReady) {
     player.setVolume(state.volume);
   }
@@ -981,11 +1356,33 @@ function updatePlayButton() {
 }
 
 function updateSeekBar() {
-  if (!player || !playerReady || seeking) return;
+  if (seeking) return;
   const seekBar = document.getElementById('seek-bar') as HTMLInputElement;
   const timeCurrent = document.getElementById('time-current');
   const timeTotal = document.getElementById('time-total');
   if (!seekBar) return;
+
+  if (isLocalPlaybackMode()) {
+    const el =
+      localPlayer ||
+      (document.getElementById('local-player') as HTMLVideoElement | null);
+    if (!el || !el.duration || !Number.isFinite(el.duration)) return;
+    seekBar.max = String(Math.floor(el.duration));
+    seekBar.value = String(Math.floor(el.currentTime || 0));
+    if (timeCurrent)
+      timeCurrent.textContent = formatDurationShort(
+        Math.floor(el.currentTime || 0)
+      );
+    if (timeTotal) {
+      const queued = state.queue[state.currentIndex];
+      timeTotal.textContent = formatDurationShort(
+        queued?.duration || Math.floor(el.duration)
+      );
+    }
+    return;
+  }
+
+  if (!player || !playerReady) return;
 
   const duration = player.getDuration();
   const currentTime = player.getCurrentTime();
@@ -1125,6 +1522,21 @@ async function prevSong() {
 }
 
 function togglePlayPause() {
+  if (isLocalPlaybackMode()) {
+    const el =
+      localPlayer ||
+      (document.getElementById('local-player') as HTMLVideoElement | null);
+    if (!el) return;
+    if (isPlaying) {
+      el.pause();
+    } else if (state.queue[state.currentIndex]) {
+      void el.play();
+    } else {
+      playCurrent();
+    }
+    return;
+  }
+
   if (!player || !playerReady) return;
   if (isPlaying) {
     player.pauseVideo();
@@ -1331,8 +1743,11 @@ function init() {
       seeking = true;
     });
     seekBar.addEventListener('change', () => {
-      if (player && playerReady) {
-        player.seekTo(parseInt(seekBar.value), true);
+      const value = parseInt(seekBar.value);
+      if (isLocalPlaybackMode() && localPlayer) {
+        localPlayer.currentTime = value;
+      } else if (player && playerReady) {
+        player.seekTo(value, true);
       }
       seeking = false;
     });
@@ -1409,6 +1824,14 @@ function init() {
   });
 
   loadState().then(() => {
+    localPlayer = document.getElementById(
+      'local-player'
+    ) as HTMLVideoElement | null;
+    if (localPlayer) bindLocalPlayerEvents(localPlayer);
+    applyPlaybackModeUi();
+    if (isLocalPlaybackMode()) {
+      void switchPlaybackMode('local');
+    }
     startPolling();
   });
 
@@ -1418,7 +1841,7 @@ function init() {
 let youtubeLoaded = false;
 
 function loadYouTubeAPI() {
-  if (youtubeLoaded) return;
+  if (youtubeLoaded || isLocalPlaybackMode()) return;
   youtubeLoaded = true;
   const tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
@@ -1428,7 +1851,9 @@ function loadYouTubeAPI() {
 
 window.onYouTubeIframeAPIReady = () => {
   youtubeApiReady = true;
-  createYouTubePlayer();
+  if (!isLocalPlaybackMode()) {
+    createYouTubePlayer();
+  }
 };
 
 loadYouTubeAPI();
