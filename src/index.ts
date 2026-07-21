@@ -174,14 +174,31 @@ interface SongEntry {
   played: boolean;
 }
 
+/**
+ * Playback command pushed from dashboard attach play/stop to the application UI.
+ */
+type PlayAction = 'idle' | 'play' | 'stop';
+
 interface AppState {
   queue: SongEntry[];
   currentIndex: number;
   playerHidden: boolean;
   volume: number;
   playerHeight: number;
+  /**
+   * Monotonic token bumped on each dashboard attach play/stop so the UI
+   * can force-apply playback even when the same videoId is already loaded.
+   */
+  playToken: number;
+  /** Latest dashboard-driven playback command for the application UI. */
+  playAction: PlayAction;
 }
 
+/**
+ * Returns a fresh default application state.
+ * @returns Default `AppState`.
+ * @example getDefaultState();
+ */
 function getDefaultState(): AppState {
   return {
     queue: [],
@@ -189,6 +206,8 @@ function getDefaultState(): AppState {
     playerHidden: false,
     volume: 50,
     playerHeight: 360,
+    playToken: 0,
+    playAction: 'idle',
   };
 }
 
@@ -207,46 +226,246 @@ function formatDurationShort(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * Decodes common HTML entities in donation/message text (e.g. `&amp;` → `&`).
+ * Donation platforms often HTML-escape URLs before they reach the addon.
+ * @param text Raw text that may contain HTML entities.
+ * @returns Text with entities decoded.
+ * @example decodeHtmlEntities('v=abc&amp;list=RD') // 'v=abc&list=RD'
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      String.fromCharCode(parseInt(code, 10))
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+}
+
+/**
+ * Extracts a YouTube video id and optional start timestamp from free text.
+ * Supports watch / shorts / embed / live / youtu.be links, including URLs
+ * whose `&` separators were HTML-escaped as `&amp;` by donation platforms.
+ * @param text Message or URL string to scan.
+ * @returns Video id and start seconds, or `null` if no valid link is found.
+ * @example parseYouTubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&amp;t=30')
+ */
 function parseYouTubeUrl(
   text: string
 ): { videoId: string; timestamp: number } | null {
-  const regex =
-    /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?&]t=(\d+[smh]?\d*[smh]?))?/i;
-  const match = text.match(regex);
-  if (!match) return null;
-  const videoId = match[1];
-  const timestamp = match[2] ? parseTimestamp(match[2]) : 0;
+  const decoded = decodeHtmlEntities(text);
+
+  let videoId: string | null = null;
+
+  const shortMatch = decoded.match(
+    /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/i
+  );
+  if (shortMatch) {
+    videoId = shortMatch[1];
+  }
+
+  if (!videoId) {
+    const pathMatch = decoded.match(
+      /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(?:shorts|embed|live)\/([a-zA-Z0-9_-]{11})/i
+    );
+    if (pathMatch) videoId = pathMatch[1];
+  }
+
+  if (!videoId) {
+    const watchMatch = decoded.match(
+      /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/watch\?[^\s<>"']+/i
+    );
+    if (watchMatch) {
+      const vMatch = watchMatch[0].match(/[?&]v=([a-zA-Z0-9_-]{11})/i);
+      if (vMatch) videoId = vMatch[1];
+    }
+  }
+
+  if (!videoId) return null;
+
+  const tMatch = decoded.match(/[?&]t=(\d+[smh]?\d*[smh]?)/i);
+  const timestamp = tMatch ? parseTimestamp(tMatch[1]) : 0;
   return { videoId, timestamp };
 }
 
+/**
+ * Extracts a balanced JSON object starting at `start` within `text`.
+ * @param text Source string containing JSON.
+ * @param start Index of the opening `{`.
+ * @returns Parsed object, or `null` on failure.
+ * @example extractBalancedJson('x={"a":1};', 2)
+ */
+function extractBalancedJson(text: string, start: number): unknown | null {
+  if (start < 0 || text[start] !== '{') return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Tries to read `videoDetails` from a YouTube watch-page HTML payload.
+ * @param html Watch page HTML.
+ * @returns `videoDetails` object when present, otherwise `null`.
+ * @example extractPlayerVideoDetails(html)?.lengthSeconds
+ */
+function extractPlayerVideoDetails(html: string): {
+  title?: string;
+  lengthSeconds?: string;
+  viewCount?: string;
+  thumbnail?: { thumbnails?: Array<{ url?: string }> };
+} | null {
+  const marker = 'ytInitialPlayerResponse';
+  const markerIdx = html.indexOf(marker);
+  if (markerIdx === -1) return null;
+  const eqIdx = html.indexOf('=', markerIdx + marker.length);
+  if (eqIdx === -1) return null;
+  let start = eqIdx + 1;
+  while (start < html.length && /\s/.test(html[start])) start++;
+  const data = extractBalancedJson(html, start) as {
+    videoDetails?: {
+      title?: string;
+      lengthSeconds?: string;
+      viewCount?: string;
+      thumbnail?: { thumbnails?: Array<{ url?: string }> };
+    };
+    playabilityStatus?: { status?: string; reason?: string };
+  } | null;
+  if (!data) return null;
+  if (!data.videoDetails) {
+    console.log('[song-request][getVideoInfo] player has no videoDetails', {
+      status: data.playabilityStatus?.status,
+      reason: data.playabilityStatus?.reason,
+    });
+    return null;
+  }
+  return data.videoDetails;
+}
+
+/**
+ * Fetches YouTube video metadata (title, duration, views, thumbnail).
+ * Uses oEmbed for title/thumbnail (reliable when watch-page scrape is
+ * bot-blocked with LOGIN_REQUIRED), then optionally enriches duration/views
+ * from the watch HTML when `videoDetails` is present.
+ * @param videoId 11-char YouTube video id.
+ * @returns Metadata, or `null` when the video cannot be resolved via oEmbed.
+ * @example const info = await getVideoInfo('dQw4w9WgXcQ');
+ */
 async function getVideoInfo(videoId: string): Promise<{
   title: string;
   duration: number;
   viewCount: number;
   thumbnail: string;
+  /** False when duration/views could not be read (bot-blocked watch page). */
+  statsKnown: boolean;
 } | null> {
+  const log = (...args: unknown[]) =>
+    console.log('[song-request][getVideoInfo]', ...args);
+
+  const headers = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+  };
+
+  let title = 'Unknown';
+  let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  let duration = 0;
+  let viewCount = 0;
+  let statsKnown = false;
+
   try {
-    const html = await network.request.get(
-      `https://www.youtube.com/watch?v=${videoId}`
-    );
-    const jsonMatch = html.match(
-      /ytInitialPlayerResponse\s*=\s*({[\s\S]*?});\s*<\//
-    );
-    if (!jsonMatch) return null;
-    const data = JSON.parse(jsonMatch[1]);
-    const details = data.videoDetails;
-    if (!details) return null;
-    const thumbnails = details.thumbnail?.thumbnails;
-    const thumbnail = thumbnails?.[thumbnails.length - 1]?.url || '';
-    return {
-      title: details.title || 'Unknown',
-      duration: parseInt(details.lengthSeconds) || 0,
-      viewCount: parseInt(details.viewCount) || 0,
-      thumbnail,
-    };
-  } catch {
+    const oembedUrl =
+      'https://www.youtube.com/oembed?url=' +
+      encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`) +
+      '&format=json';
+    const oembedRaw = await network.request.get(oembedUrl, {
+      ...headers,
+      Accept: 'application/json',
+    });
+    log('oembed', {
+      length: typeof oembedRaw === 'string' ? oembedRaw.length : -1,
+      preview: String(oembedRaw).slice(0, 160),
+    });
+    const oembed = JSON.parse(oembedRaw);
+    if (!oembed || typeof oembed.title !== 'string') {
+      log('oembed missing title', oembed);
+      return null;
+    }
+    title = oembed.title;
+    if (typeof oembed.thumbnail_url === 'string') {
+      thumbnail = oembed.thumbnail_url;
+    }
+  } catch (err) {
+    log('oembed failed', err);
     return null;
   }
+
+  try {
+    const html = await network.request.get(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      headers
+    );
+    log('watch html', {
+      length: typeof html === 'string' ? html.length : -1,
+      hasPlayer:
+        typeof html === 'string' && html.includes('ytInitialPlayerResponse'),
+    });
+    const details =
+      typeof html === 'string' ? extractPlayerVideoDetails(html) : null;
+    if (details) {
+      duration = parseInt(details.lengthSeconds || '0', 10) || 0;
+      viewCount = parseInt(details.viewCount || '0', 10) || 0;
+      statsKnown = true;
+      if (details.title) title = details.title;
+      const thumbs = details.thumbnail?.thumbnails;
+      if (thumbs?.length) {
+        thumbnail = thumbs[thumbs.length - 1]?.url || thumbnail;
+      }
+      log('enriched from player', {
+        duration,
+        viewCount,
+        title: title.slice(0, 80),
+      });
+    } else {
+      log('using oembed-only metadata (duration/views unavailable)');
+    }
+  } catch (err) {
+    log('watch scrape failed; keeping oembed metadata', err);
+  }
+
+  return { title, duration, viewCount, thumbnail, statsKnown };
 }
 
 let currentState: AppState = getDefaultState();
@@ -296,13 +515,49 @@ async function init() {
     ]);
   } catch {}
 
+  console.log('[song-request] init complete, listening for dashboard records', {
+    enabled: currentSettings.enabled,
+    cost: currentSettings.cost,
+    currency: currentSettings.currency,
+  });
+
   dashboard.onAttachPlay(async payload => {
     if (payload.type !== 'song') return;
-    if (payload.action !== 'play') return;
+
     const entryIdx = currentState.queue.findIndex(e => e.id === payload.id);
     if (entryIdx === -1) return;
-    currentState.queue[entryIdx].played = false;
+
+    const entry = currentState.queue[entryIdx];
+    const isCurrent = currentState.currentIndex === entryIdx;
+    // Stuck `playing: true` sends `stop` even when nothing is current — treat as play.
+    const shouldStop = payload.action === 'stop' && isCurrent;
+
+    if (shouldStop) {
+      currentState.playAction = 'stop';
+      currentState.playToken += 1;
+      saveState();
+      try {
+        await dashboard.updateRecordAttaches(
+          payload.recordId,
+          [
+            {
+              type: 'song',
+              value: entry.title,
+              id: payload.id,
+              playable: true,
+              playing: false,
+            },
+          ],
+          { mode: 'merge' }
+        );
+      } catch {}
+      return;
+    }
+
+    entry.played = false;
     currentState.currentIndex = entryIdx;
+    currentState.playAction = 'play';
+    currentState.playToken += 1;
     saveState();
     try {
       await dashboard.updateRecordAttaches(
@@ -310,9 +565,10 @@ async function init() {
         [
           {
             type: 'song',
-            value: currentState.queue[entryIdx].title,
+            value: entry.title,
             id: payload.id,
             playable: true,
+            playing: true,
           },
         ],
         { mode: 'merge' }
@@ -370,13 +626,13 @@ async function init() {
     const errors: string[] = [];
     const maxDuration = currentSettings.maxDuration || 0;
     const effectiveDuration = info.duration - parsed.timestamp;
-    if (maxDuration > 0 && effectiveDuration > maxDuration) {
+    if (info.statsKnown && maxDuration > 0 && effectiveDuration > maxDuration) {
       errors.push(
         `Duration ${formatDurationShort(effectiveDuration)} exceeds max ${formatDurationShort(maxDuration)}`
       );
     }
     const minViews = currentSettings.minViews || 0;
-    if (minViews > 0 && info.viewCount < minViews) {
+    if (info.statsKnown && minViews > 0 && info.viewCount < minViews) {
       errors.push(
         `Views ${info.viewCount.toLocaleString()} below minimum ${minViews.toLocaleString()}`
       );
@@ -422,18 +678,63 @@ async function init() {
   });
 
   dashboard.onRecord(async payload => {
-    if (payload.record.type !== 'donation') return;
-    if (!currentSettings.enabled) return;
+    const log = (...args: unknown[]) =>
+      console.log('[song-request][donation]', ...args);
+
+    log('record received', {
+      id: payload.id,
+      type: payload.record?.type,
+      from: payload.record?.from,
+      amount: payload.record?.amount,
+      sourceAddonId: (payload as any).sourceAddonId,
+      user: payload.user?.name,
+      messageType: typeof payload.record?.message,
+      message: payload.record?.message,
+      enabled: currentSettings.enabled,
+      settings: {
+        cost: currentSettings.cost,
+        currency: currentSettings.currency,
+        maxDuration: currentSettings.maxDuration,
+        minViews: currentSettings.minViews,
+      },
+    });
+
+    if (payload.record.type !== 'donation') {
+      log('skip: not a donation', payload.record.type);
+      return;
+    }
+    if (!currentSettings.enabled) {
+      log('skip: addon disabled in settings');
+      return;
+    }
 
     const message = payload.record.message;
     const text =
-      typeof message === 'string' ? message : (message as any)?.en || '';
+      typeof message === 'string'
+        ? message
+        : (message as any)?.en ||
+          (message as any)?.ru ||
+          (message as any)?.uk ||
+          '';
+
+    log('message extracted', {
+      text,
+      textLength: text.length,
+      decodedPreview: decodeHtmlEntities(text).slice(0, 300),
+    });
 
     const parsed = parseYouTubeUrl(text);
-    if (!parsed) return;
+    if (!parsed) {
+      log('skip: no YouTube URL found in message');
+      return;
+    }
+    log('url parsed', parsed);
 
     const amount = payload.record.amount;
-    if (!amount || amount.length < 2) return;
+    if (!amount || amount.length < 2) {
+      log('skip: amount missing or incomplete', amount);
+      return;
+    }
 
     const [donationAmount, donationCurrency] = amount;
 
@@ -442,26 +743,71 @@ async function init() {
       normalizeCurrencyCode(currentSettings.currency) || 'USD';
     const fromCurrency = normalizeCurrencyCode(donationCurrency);
 
+    log('amount check', {
+      donationAmount,
+      donationCurrency: fromCurrency,
+      costValue,
+      costCurrency,
+    });
+
     if (fromCurrency !== costCurrency) {
       const converted = await currency.convert(
         donationAmount,
         fromCurrency as any,
         costCurrency as any
       );
-      if (!converted.success || converted.amount < costValue) return;
+      log('currency converted', converted);
+      if (!converted.success || converted.amount < costValue) {
+        log('skip: converted amount below cost', {
+          converted,
+          costValue,
+        });
+        return;
+      }
     } else if (donationAmount < costValue) {
+      log('skip: amount below cost', { donationAmount, costValue });
       return;
     }
 
+    log('fetching video info', parsed.videoId);
     const info = await getVideoInfo(parsed.videoId);
-    if (!info) return;
+    if (!info) {
+      log('skip: getVideoInfo returned null', parsed.videoId);
+      return;
+    }
+    log('video info', {
+      title: info.title,
+      duration: info.duration,
+      viewCount: info.viewCount,
+      statsKnown: info.statsKnown,
+    });
 
     const maxDuration = currentSettings.maxDuration || 0;
     const effectiveDuration = info.duration - parsed.timestamp;
-    if (maxDuration > 0 && effectiveDuration > maxDuration) return;
+    if (info.statsKnown && maxDuration > 0 && effectiveDuration > maxDuration) {
+      log('skip: duration exceeds max', {
+        effectiveDuration,
+        maxDuration,
+      });
+      return;
+    }
+    if (!info.statsKnown && maxDuration > 0) {
+      log(
+        'warn: maxDuration set but duration unknown; skipping duration filter'
+      );
+    }
 
     const minViews = currentSettings.minViews || 0;
-    if (minViews > 0 && info.viewCount < minViews) return;
+    if (info.statsKnown && minViews > 0 && info.viewCount < minViews) {
+      log('skip: views below minimum', {
+        viewCount: info.viewCount,
+        minViews,
+      });
+      return;
+    }
+    if (!info.statsKnown && minViews > 0) {
+      log('warn: minViews set but viewCount unknown; skipping views filter');
+    }
 
     const entry: SongEntry = {
       id: random.id(),
@@ -482,6 +828,13 @@ async function init() {
         firstUnplayed !== -1 ? firstUnplayed : currentState.queue.length - 1;
     }
     saveState();
+    log('queued', {
+      entryId: entry.id,
+      videoId: entry.videoId,
+      title: entry.title,
+      queueLength: currentState.queue.length,
+      currentIndex: currentState.currentIndex,
+    });
 
     try {
       await dashboard.updateRecordAttaches(
@@ -489,7 +842,10 @@ async function init() {
         [{ type: 'song', value: entry.title, id: entry.id, playable: true }],
         { mode: 'merge' }
       );
-    } catch {}
+      log('attach updated on donation record');
+    } catch (err) {
+      log('attach update failed', err);
+    }
   });
 }
 

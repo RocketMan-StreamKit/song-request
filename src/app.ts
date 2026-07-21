@@ -145,6 +145,9 @@ function t(key: string, ...args: any[]): string {
   return val ?? key;
 }
 
+/**
+ * Queue entry for a requested YouTube track.
+ */
 interface SongEntry {
   id: string;
   videoId: string;
@@ -157,32 +160,63 @@ interface SongEntry {
   played: boolean;
 }
 
+/**
+ * Playback command pushed from dashboard attach play/stop to the application UI.
+ */
+type PlayAction = 'idle' | 'play' | 'stop';
+
+/**
+ * Application UI state mirrored from the worker.
+ */
 interface AppState {
   queue: SongEntry[];
   currentIndex: number;
   playerHidden: boolean;
   volume: number;
   playerHeight: number;
+  /**
+   * Monotonic token bumped on each dashboard attach play/stop so the UI
+   * can force-apply playback even when the same videoId is already loaded.
+   */
+  playToken: number;
+  /** Latest dashboard-driven playback command for the application UI. */
+  playAction: PlayAction;
 }
 
+/** Current mirrored worker state for the application UI. */
 let state: AppState = {
   queue: [],
   currentIndex: -1,
   playerHidden: false,
   volume: 50,
   playerHeight: 360,
+  playToken: 0,
+  playAction: 'idle',
 };
+/** YouTube IFrame player instance, or null before create/after destroy. */
 let player: any = null;
+/** Whether the player reports an active playing state. */
 let isPlaying = false;
+/** Whether the YouTube player `onReady` callback has fired. */
 let playerReady = false;
+/** Interval id for polling worker state, or null when stopped. */
 let pollTimer: number | null = null;
+/** Interval id for seek bar updates, or null when stopped. */
 let seekTimer: number | null = null;
+/** Queue row currently being dragged, if any. */
 let dragItem: HTMLElement | null = null;
+/** Whether the YouTube IFrame API script has finished loading. */
 let youtubeApiReady = false;
+/** Whether the user is actively scrubbing the seek bar. */
 let seeking = false;
+/** Selected YouTube playback quality id from the quality select. */
 let selectedQuality: string = 'default';
+/** Pending manual add awaiting restriction confirmation, if any. */
 let pendingAdd: { url: string; info: any } | null = null;
+/** Last rendered queue key used to skip redundant DOM rebuilds. */
 let lastRenderKey = '';
+/** Last applied `playToken` from worker state (dashboard attach play/stop). */
+let lastPlayToken = 0;
 
 const API_BASE = `http://localhost:${window.location.port}/addon/song-request`;
 
@@ -270,7 +304,16 @@ async function loadState() {
   try {
     const data = await apiGet('/state');
     if (data.success) {
-      state = data.state;
+      state = {
+        queue: [],
+        currentIndex: -1,
+        playerHidden: false,
+        volume: 50,
+        playerHeight: 360,
+        playToken: 0,
+        playAction: 'idle',
+        ...data.state,
+      };
       if (data.lang && LOCALE[data.lang]) {
         lang = LOCALE[data.lang];
       }
@@ -577,8 +620,36 @@ function playCurrent() {
   startSeekPolling();
 }
 
+/**
+ * Syncs the YouTube player with `state.currentIndex` / queue changes.
+ * Dashboard attach play/stop bumps `playToken` so the same videoId can be
+ * force-restarted or paused without waiting for a different track.
+ * @returns {void}
+ * @example updatePlayerState();
+ */
 function updatePlayerState() {
   if (!playerReady || !player) return;
+
+  if (
+    typeof state.playToken === 'number' &&
+    state.playToken !== lastPlayToken
+  ) {
+    lastPlayToken = state.playToken;
+    if (state.playAction === 'stop') {
+      try {
+        player.pauseVideo();
+      } catch {
+        // Ignore pause errors from a half-initialized player
+      }
+      isPlaying = false;
+      updatePlayButton();
+      return;
+    }
+    if (state.playAction === 'play') {
+      playCurrent();
+      return;
+    }
+  }
 
   if (state.currentIndex === -1) {
     const firstUnplayed = state.queue.findIndex(item => !item.played);
@@ -1067,8 +1138,13 @@ function togglePlayPause() {
   }
 }
 
+/**
+ * Starts polling worker state so dashboard attach play/stop is applied quickly.
+ * @returns {void}
+ * @example startPolling();
+ */
 function startPolling() {
-  pollTimer = window.setInterval(loadState, 3000);
+  pollTimer = window.setInterval(loadState, 1000);
 }
 
 function stopPolling() {

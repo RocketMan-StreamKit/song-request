@@ -7,6 +7,12 @@ Integration addon for StreamKit+.
 
 UI styles follow the main app theme via `/data/styles.css` (CSS variables and `.App` controls). Addon CSS only covers layout and song-request-specific pieces.
 
+YouTube links in donation messages are parsed even when the platform HTML-escapes query separators (`&amp;` instead of `&`), including Mix/Radio URLs with `list` / `start_radio` params.
+
+Video metadata is resolved via YouTube oEmbed (title/thumbnail), with optional watch-page enrichment for duration/views when YouTube is not bot-blocking the request.
+
+Donation processing logs to the addon console with the `[song-request][donation]` / `[song-request][getVideoInfo]` prefixes (record payload, extracted message, URL parse, amount/filters, metadata fetch, queue result) to debug missed requests.
+
 
 ## Development
 
