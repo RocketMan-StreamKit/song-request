@@ -21,6 +21,10 @@ Settings include **Playback mode**:
 
 Requires StreamKit+ `>= 1.3.7` (`FILE_ACCESS`, `ADDON_TMP_DIR`, yt-dlp conversion options).
 
+### Extra request triggers
+
+**Extra request triggers** lets the user pick events from other addons that can request a song, such as a Twitch channel point reward. The event text must contain a YouTube link, so rewards generated from this field ask the viewer for text (`valueContext: { userInput: true }`); a reward picked from the list must already do that. The donation minimum does not apply to these requests; `maxDuration` and `minViews` do. Dispatches log with the `[song-request][trigger]` prefix.
+
 Donation processing logs to the addon console with the `[song-request][donation]` / `[song-request][getVideoInfo]` prefixes (record payload, extracted message, URL parse, amount/filters, metadata fetch, queue result) to debug missed requests.
 
 

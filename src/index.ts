@@ -208,6 +208,25 @@ function buildSettingsSchema(
         },
       },
     },
+    {
+      key: 'requestTriggers',
+      type: 'triggers' as const,
+      event: 'onRequestTrigger',
+      excludeTypes: ['donation' as const],
+      valueContext: { userInput: true },
+      editor: {
+        label: {
+          en: 'Extra request triggers',
+          ru: 'Дополнительные триггеры заказа',
+          uk: 'Додаткові тригери замовлення',
+        },
+        description: {
+          en: 'Events from other addons that can also request a song, for example a Twitch channel point reward. The event text must contain a YouTube link, so a reward must ask the viewer for text. Generated rewards do this automatically. The donation minimum does not apply; the other filters do.',
+          ru: 'События других аддонов, которые тоже могут заказать трек, например награда за баллы канала Twitch. В тексте события должна быть ссылка на YouTube, поэтому награда должна запрашивать текст у зрителя. Сгенерированные награды делают это автоматически. Минимальная сумма доната здесь не действует, остальные фильтры действуют.',
+          uk: 'Події інших аддонів, які також можуть замовити трек, наприклад нагорода за бали каналу Twitch. У тексті події має бути посилання на YouTube, тому нагорода має запитувати текст у глядача. Згенеровані нагороди роблять це автоматично. Мінімальна сума донату тут не діє, решта фільтрів діє.',
+        },
+      },
+    },
   ];
 }
 
@@ -748,6 +767,116 @@ function saveState() {
   storage.Write(currentState);
 }
 
+/**
+ * Reads plain text from a dashboard record message (string or localized map).
+ * @param message Record message value.
+ * @example extractMessageText({ en: 'https://youtu.be/dQw4w9WgXcQ' });
+ */
+function extractMessageText(message: unknown): string {
+  if (typeof message === 'string') return message;
+  const localized = message as
+    | { en?: string; ru?: string; uk?: string }
+    | null
+    | undefined;
+  return localized?.en || localized?.ru || localized?.uk || '';
+}
+
+/**
+ * Applies video filters, queues the song, and attaches it to the source record.
+ * @param args Parsed link, requester name, source record id, and logger.
+ * @example
+ * await queueRequestedSong({
+ *   parsed: { videoId: 'dQw4w9WgXcQ', timestamp: 0 },
+ *   requestedBy: 'Viewer',
+ *   recordId: 'twitch:redemption:1',
+ *   log: console.log,
+ * });
+ */
+async function queueRequestedSong(args: {
+  parsed: { videoId: string; timestamp: number };
+  requestedBy: string;
+  recordId: string;
+  log: (...args: unknown[]) => void;
+}): Promise<void> {
+  const { parsed, requestedBy, recordId, log } = args;
+
+  log('fetching video info', parsed.videoId);
+  const info = await getVideoInfo(parsed.videoId);
+  if (!info) {
+    log('skip: getVideoInfo returned null', parsed.videoId);
+    return;
+  }
+  log('video info', {
+    title: info.title,
+    duration: info.duration,
+    viewCount: info.viewCount,
+    statsKnown: info.statsKnown,
+  });
+
+  const maxDuration = currentSettings.maxDuration || 0;
+  const effectiveDuration = info.duration - parsed.timestamp;
+  if (info.statsKnown && maxDuration > 0 && effectiveDuration > maxDuration) {
+    log('skip: duration exceeds max', {
+      effectiveDuration,
+      maxDuration,
+    });
+    return;
+  }
+  if (!info.statsKnown && maxDuration > 0) {
+    log('warn: maxDuration set but duration unknown; skipping duration filter');
+  }
+
+  const minViews = currentSettings.minViews || 0;
+  if (info.statsKnown && minViews > 0 && info.viewCount < minViews) {
+    log('skip: views below minimum', {
+      viewCount: info.viewCount,
+      minViews,
+    });
+    return;
+  }
+  if (!info.statsKnown && minViews > 0) {
+    log('warn: minViews set but viewCount unknown; skipping views filter');
+  }
+
+  const entry: SongEntry = {
+    id: random.id(),
+    videoId: parsed.videoId,
+    title: info.title,
+    duration: info.duration,
+    thumbnail: info.thumbnail,
+    requestedBy,
+    requestedAt: Date.now(),
+    timestamp: parsed.timestamp,
+    played: false,
+  };
+
+  currentState.queue.push(entry);
+  if (currentState.currentIndex === -1) {
+    const firstUnplayed = currentState.queue.findIndex(i => !i.played);
+    currentState.currentIndex =
+      firstUnplayed !== -1 ? firstUnplayed : currentState.queue.length - 1;
+  }
+  saveState();
+  log('queued', {
+    entryId: entry.id,
+    videoId: entry.videoId,
+    title: entry.title,
+    queueLength: currentState.queue.length,
+    currentIndex: currentState.currentIndex,
+  });
+
+  try {
+    await dashboard.updateRecordAttaches(
+      recordId,
+      [{ type: 'song', value: entry.title, id: entry.id, playable: true }],
+      { mode: 'merge' }
+    );
+    log('attach updated on source record');
+  } catch (err) {
+    log('attach update failed', err);
+  }
+}
+
 async function init() {
   await loadSettings();
 
@@ -1033,14 +1162,7 @@ async function init() {
       return;
     }
 
-    const message = payload.record.message;
-    const text =
-      typeof message === 'string'
-        ? message
-        : (message as any)?.en ||
-          (message as any)?.ru ||
-          (message as any)?.uk ||
-          '';
+    const text = extractMessageText(payload.record.message);
 
     log('message extracted', {
       text,
@@ -1094,84 +1216,46 @@ async function init() {
       return;
     }
 
-    log('fetching video info', parsed.videoId);
-    const info = await getVideoInfo(parsed.videoId);
-    if (!info) {
-      log('skip: getVideoInfo returned null', parsed.videoId);
-      return;
-    }
-    log('video info', {
-      title: info.title,
-      duration: info.duration,
-      viewCount: info.viewCount,
-      statsKnown: info.statsKnown,
-    });
-
-    const maxDuration = currentSettings.maxDuration || 0;
-    const effectiveDuration = info.duration - parsed.timestamp;
-    if (info.statsKnown && maxDuration > 0 && effectiveDuration > maxDuration) {
-      log('skip: duration exceeds max', {
-        effectiveDuration,
-        maxDuration,
-      });
-      return;
-    }
-    if (!info.statsKnown && maxDuration > 0) {
-      log(
-        'warn: maxDuration set but duration unknown; skipping duration filter'
-      );
-    }
-
-    const minViews = currentSettings.minViews || 0;
-    if (info.statsKnown && minViews > 0 && info.viewCount < minViews) {
-      log('skip: views below minimum', {
-        viewCount: info.viewCount,
-        minViews,
-      });
-      return;
-    }
-    if (!info.statsKnown && minViews > 0) {
-      log('warn: minViews set but viewCount unknown; skipping views filter');
-    }
-
-    const entry: SongEntry = {
-      id: random.id(),
-      videoId: parsed.videoId,
-      title: info.title,
-      duration: info.duration,
-      thumbnail: info.thumbnail,
+    await queueRequestedSong({
+      parsed,
       requestedBy: payload.user?.name || payload.record.from || 'Anonymous',
-      requestedAt: Date.now(),
-      timestamp: parsed.timestamp,
-      played: false,
-    };
-
-    currentState.queue.push(entry);
-    if (currentState.currentIndex === -1) {
-      const firstUnplayed = currentState.queue.findIndex(i => !i.played);
-      currentState.currentIndex =
-        firstUnplayed !== -1 ? firstUnplayed : currentState.queue.length - 1;
-    }
-    saveState();
-    log('queued', {
-      entryId: entry.id,
-      videoId: entry.videoId,
-      title: entry.title,
-      queueLength: currentState.queue.length,
-      currentIndex: currentState.currentIndex,
+      recordId: payload.id,
+      log,
     });
-
-    try {
-      await dashboard.updateRecordAttaches(
-        payload.id,
-        [{ type: 'song', value: entry.title, id: entry.id, playable: true }],
-        { mode: 'merge' }
-      );
-      log('attach updated on donation record');
-    } catch (err) {
-      log('attach update failed', err);
-    }
   });
+
+  events.On(
+    'onRequestTrigger',
+    async ({
+      record,
+      user,
+    }: {
+      record: { id: string; message?: unknown; from?: string };
+      user?: { name: string };
+    }) => {
+      const log = (...args: unknown[]) =>
+        console.log('[song-request][trigger]', ...args);
+
+      await loadSettings();
+      if (!currentSettings.enabled) {
+        log('skip: addon disabled in settings');
+        return;
+      }
+
+      const parsed = parseYouTubeUrl(extractMessageText(record.message));
+      if (!parsed) {
+        log('skip: no YouTube URL found in event text', record.id);
+        return;
+      }
+
+      await queueRequestedSong({
+        parsed,
+        requestedBy: user?.name || record.from || 'Anonymous',
+        recordId: record.id,
+        log,
+      });
+    }
+  );
 }
 
 init();
