@@ -294,38 +294,24 @@ const MEDIA_EXTS_BY_QUALITY: Record<DownloadQuality, string[]> = {
 };
 
 /**
- * yt-dlp conversion options for a download quality preset.
+ * yt-dlp options for a download quality preset.
+ * StreamKit+ ships yt-dlp without ffmpeg, so only ready single-file formats are
+ * requested: audio extraction and video+audio merging would fail on most PCs.
  * @param quality Download quality preset.
  * @example getYtDlpOptionsForQuality('audio');
  */
 function getYtDlpOptionsForQuality(quality: DownloadQuality): {
   format: string;
-  extractAudio?: boolean;
-  audioFormat?: string;
-  mergeOutputFormat?: string;
 } {
   switch (quality) {
     case 'audio':
-      return {
-        format: 'ba/bestaudio',
-        extractAudio: true,
-        audioFormat: 'm4a',
-      };
+      return { format: 'ba[ext=m4a]/ba/bestaudio' };
     case 'low':
-      return {
-        format: 'bv*[height' + '<=360]+ba/b[height' + '<=360]',
-        mergeOutputFormat: 'mp4',
-      };
+      return { format: 'b[height' + '<=360][ext=mp4]/b[height' + '<=360]/b' };
     case 'medium':
-      return {
-        format: 'bv*[height' + '<=720]+ba/b[height' + '<=720]',
-        mergeOutputFormat: 'mp4',
-      };
+      return { format: 'b[height' + '<=720][ext=mp4]/b[height' + '<=720]/b' };
     case 'high':
-      return {
-        format: 'bv*[height' + '<=1080]+ba/b[height' + '<=1080]',
-        mergeOutputFormat: 'mp4',
-      };
+      return { format: 'b[height' + '<=1080][ext=mp4]/b[height' + '<=1080]/b' };
   }
 }
 

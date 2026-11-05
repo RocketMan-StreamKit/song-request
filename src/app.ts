@@ -227,6 +227,8 @@ let localPlayer: HTMLVideoElement | null = null;
 let preparingMedia = false;
 /** Video id currently loaded in the local player element. */
 let localLoadedVideoId: string | null = null;
+/** Clip whose download failed; the state poll must not retry it automatically. */
+let localFailedVideoId: string | null = null;
 /** Whether the player reports an active playing state. */
 let isPlaying = false;
 /** Whether the YouTube player `onReady` callback has fired. */
@@ -736,6 +738,7 @@ async function switchPlaybackMode(mode: PlaybackMode) {
       bindLocalPlayerEvents(localEl);
     }
     localLoadedVideoId = null;
+    localFailedVideoId = null;
     playCurrent();
     return;
   }
@@ -748,6 +751,7 @@ async function switchPlaybackMode(mode: PlaybackMode) {
   }
   if (ytMount) ytMount.classList.remove('hidden');
   localLoadedVideoId = null;
+  localFailedVideoId = null;
   if (youtubeApiReady) {
     createYouTubePlayer();
   } else {
@@ -838,6 +842,7 @@ async function playCurrentLocal() {
   try {
     const prep = await apiPost('/prepare-media', { videoId: item.videoId });
     if (!prep.success) {
+      localFailedVideoId = item.videoId;
       showToast(prep.message || t('downloadFailed'));
       isPlaying = false;
       updatePlayButton();
@@ -866,6 +871,7 @@ async function playCurrentLocal() {
     });
 
     localLoadedVideoId = item.videoId;
+    localFailedVideoId = null;
     el.currentTime = item.timestamp || 0;
     await el.play();
     isPlaying = true;
@@ -873,6 +879,7 @@ async function playCurrentLocal() {
     startSeekPolling();
   } catch (err) {
     console.error('Local playback failed:', err);
+    localFailedVideoId = item.videoId;
     showToast(t('downloadFailed'));
     isPlaying = false;
     updatePlayButton();
@@ -968,7 +975,10 @@ function updatePlayerState() {
       return;
     }
 
-    if (localLoadedVideoId !== currentItem.videoId) {
+    if (
+      localLoadedVideoId !== currentItem.videoId &&
+      localFailedVideoId !== currentItem.videoId
+    ) {
       playCurrent();
     }
     return;

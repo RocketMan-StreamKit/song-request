@@ -4,7 +4,7 @@ Integration addon for StreamKit+.
 
 - **Addon id:** `song-request`
 - **Type:** `application`
-- **Version:** `1.1.0`
+- **Version:** `1.1.1`
 
 UI styles follow the main app theme via `/data/styles.css` (CSS variables and `.App` controls). Addon CSS only covers layout and song-request-specific pieces.
 
@@ -17,9 +17,9 @@ Video metadata is resolved via YouTube oEmbed (title/thumbnail), with optional w
 Settings include **Playback mode**:
 
 - **YouTube iFrame** (default) — plays through the embedded YouTube player.
-- **Download clip to PC** — on play, the clip is downloaded with yt-dlp into `ADDON_TMP_DIR` (cached as `{videoId}_song.*` / `_low.*` / `_medium.*` / `_high.*`) and played locally in the application window. **Download quality** chooses audio-only or low/medium/high video.
+- **Download clip to PC** — on play, the clip is downloaded with yt-dlp into `ADDON_TMP_DIR` (cached as `{videoId}_song.*` / `_low.*` / `_medium.*` / `_high.*`) and played locally in the application window. **Download quality** chooses audio-only or low/medium/high video. StreamKit+ ships without ffmpeg, so only single-file YouTube formats are requested; video is usually 360p regardless of the preset.
 
-Requires StreamKit+ `>= 1.0.45` (`FILE_ACCESS`, `ADDON_TMP_DIR`, yt-dlp conversion options).
+Requires StreamKit+ `>= 1.3.7` (`FILE_ACCESS`, `ADDON_TMP_DIR`, yt-dlp conversion options).
 
 Donation processing logs to the addon console with the `[song-request][donation]` / `[song-request][getVideoInfo]` prefixes (record payload, extracted message, URL parse, amount/filters, metadata fetch, queue result) to debug missed requests.
 
